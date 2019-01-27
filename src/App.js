@@ -51,6 +51,12 @@ class Player extends GameObject {
   lastMove = new Vec2d();
   isMoving = false;
   static MOVEMENT_SPEED = 2;
+  static GUY_ANIM = [
+    assets.guywalkcycle1,
+    assets.guywalkcycle2,
+    assets.guywalkcycle3,
+  ];
+  static FRAMES_PER_ANIM_FRAME = 3;
 
   update(game: GameState) {
     const playerMove = new Vec2d();
@@ -69,11 +75,11 @@ class Player extends GameObject {
     }
 
     if (this.isMoving) {
-      const framesPerAnimFrame = 3;
       this.sprite =
-        GUY_ANIM[
+        Player.GUY_ANIM[
           Math.floor(
-            Math.floor(game.frame / framesPerAnimFrame) % GUY_ANIM.length
+            Math.floor(game.frame / Player.FRAMES_PER_ANIM_FRAME) %
+              Player.GUY_ANIM.length
           )
         ];
     } else {
@@ -96,11 +102,6 @@ function moveThing(pos: Vec2d, movement: Vec2d, magnitude: number) {
   pos.add(velocity);
 }
 
-const GUY_ANIM = [
-  assets.guywalkcycle1,
-  assets.guywalkcycle2,
-  assets.guywalkcycle3,
-];
 const Guy = (props: {player: Player, frame: number}) => {
   // TODO: move this to player class
   const facingRight = props.player.lastMove.x > 0;
