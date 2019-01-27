@@ -1,11 +1,7 @@
 // @flow
-import React, {Component} from 'react';
-import dstent from './assets/dstent.png';
-import guystill from './assets/guystill.png';
-import guywalkcycle1 from './assets/guywalkcycle1.png';
-import guywalkcycle2 from './assets/guywalkcycle2.png';
-import guywalkcycle3 from './assets/guywalkcycle3.png';
 import './App.css';
+import assets from './assets';
+import React, {Component} from 'react';
 import Vec2d from './Vec2d';
 
 const ITEMS_PER_ROW = 4;
@@ -48,7 +44,7 @@ class GameObject {
 }
 
 class Tent extends GameObject {
-  sprite = dstent;
+  sprite = assets.dstent;
 }
 
 class Player extends GameObject {
@@ -71,6 +67,18 @@ class Player extends GameObject {
     } else {
       this.isMoving = false;
     }
+
+    if (this.isMoving) {
+      const framesPerAnimFrame = 3;
+      this.sprite =
+        GUY_ANIM[
+          Math.floor(
+            Math.floor(game.frame / framesPerAnimFrame) % GUY_ANIM.length
+          )
+        ];
+    } else {
+      this.sprite = assets.guystill;
+    }
   }
 }
 
@@ -88,24 +96,18 @@ function moveThing(pos: Vec2d, movement: Vec2d, magnitude: number) {
   pos.add(velocity);
 }
 
-const GUY_ANIM = [guywalkcycle1, guywalkcycle2, guywalkcycle3];
+const GUY_ANIM = [
+  assets.guywalkcycle1,
+  assets.guywalkcycle2,
+  assets.guywalkcycle3,
+];
 const Guy = (props: {player: Player, frame: number}) => {
-  let sprite = guystill;
-  if (props.player.isMoving) {
-    const framesPerAnimFrame = 3;
-    sprite =
-      GUY_ANIM[
-        Math.floor(
-          Math.floor(props.frame / framesPerAnimFrame) % GUY_ANIM.length
-        )
-      ];
-  }
-
+  // TODO: move this to player class
   const facingRight = props.player.lastMove.x > 0;
 
   return (
     <img
-      src={sprite}
+      src={props.player.sprite}
       className="sprite"
       style={{
         position: 'absolute',
