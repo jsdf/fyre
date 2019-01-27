@@ -4,7 +4,6 @@ body {
 }
 
 .App {
-  text-align: center;
 }
 
 .sprite {
@@ -12,17 +11,14 @@ body {
   image-rendering: pixelated;
 }
 
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+.statbar {
+  height: 10px;
+  display: inline-block;
 }
-
-.App-link {
-  color: #61dafb;
+.statbarlabel {
+  height: 10px;
+  width: 70px;
+  text-align: right;
+  display: inline-block;
+  margin-right: 4px;
 }

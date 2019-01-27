@@ -4,26 +4,20 @@ import assets from './assets';
 import React, {Component} from 'react';
 import Vec2d from './Vec2d';
 
-const ITEMS_PER_ROW = 4;
-const TENT_WIDTH = 64;
-const TENT_HEIGHT = 64;
+const TENTS_PER_ROW = 10;
+const TENT_GROUND_WIDTH = 64;
+const TENT_GROUND_HEIGHT = 64;
 const SCALE = 2;
+
+const TENT_START_POS = new Vec2d({x: 20, y: 20});
 
 function toScreenPx(px) {
   return px * SCALE;
 }
 
 type Direction = 'up' | 'down' | 'left' | 'right';
-type Keys = {['up' | 'down' | 'left' | 'right']: boolean};
-
-function makeKeys() {
-  return {
-    up: false,
-    down: false,
-    left: false,
-    right: false,
-  };
-}
+const DIRECTIONS: Array<Direction> = ['up', 'down', 'left', 'right'];
+type KeyStates = {['up' | 'down' | 'left' | 'right']: boolean};
 
 const DIRECTIONS_VECTORS = {
   up: new Vec2d({x: 0, y: -1}),
@@ -35,19 +29,28 @@ const DIRECTIONS_VECTORS = {
 class GameObject {
   static maxId = 0;
   id = GameObject.maxId++;
-  pos = new Vec2d();
+  pos: Vec2d = new Vec2d();
   sprite = '';
+  bboxStart = new Vec2d(); // top left
+  bboxEnd = new Vec2d(); // bottom right
 
-  update(game: GameState) {
+  update(game: Game) {
     // noop
   }
 }
 
 class Tent extends GameObject {
   sprite = assets.dstent;
+  bboxStart = new Vec2d({x: 3, y: 18});
+  bboxEnd = new Vec2d({x: 38, y: 33});
 }
 
 class Player extends GameObject {
+  piss = 10;
+  energy = 10;
+  pos = new Vec2d({x: 300, y: 200});
+  bboxStart = new Vec2d({x: 13, y: 18});
+  bboxEnd = new Vec2d({x: 17, y: 23});
   lastMove = new Vec2d();
   isMoving = false;
   static MOVEMENT_SPEED = 2;
@@ -58,16 +61,17 @@ class Player extends GameObject {
   ];
   static FRAMES_PER_ANIM_FRAME = 3;
 
-  update(game: GameState) {
-    const playerMove = new Vec2d();
-    ['up', 'down', 'left', 'right'].forEach(direction => {
+  update(game: Game) {
+    let playerMove = new Vec2d();
+    DIRECTIONS.forEach(direction => {
       if (game.keys[direction]) {
         playerMove.add(DIRECTIONS_VECTORS[direction]);
       }
     });
 
     if (playerMove.x !== 0 || playerMove.y !== 0) {
-      moveThing(this.pos, playerMove, Player.MOVEMENT_SPEED);
+      playerMove = getMovementVelocity(playerMove, Player.MOVEMENT_SPEED);
+      this.pos.add(playerMove);
       this.lastMove = playerMove;
       this.isMoving = true;
     } else {
@@ -88,46 +92,129 @@ class Player extends GameObject {
   }
 }
 
-const STATIC_OBJECTS = new Array(20).fill(0).map((_, i) => {
-  const tent = new Tent();
-  tent.pos.x = (i % ITEMS_PER_ROW) * TENT_WIDTH;
-  tent.pos.y = Math.floor(i / ITEMS_PER_ROW) * TENT_HEIGHT;
-
-  return tent;
-});
-
-function moveThing(pos: Vec2d, movement: Vec2d, magnitude: number) {
+function getMovementVelocity(movement: Vec2d, magnitude: number) {
   const direction = movement.clone().normalise();
   const velocity = direction.multiplyScalar(magnitude);
-  pos.add(velocity);
+  return velocity;
 }
 
-const Guy = (props: {player: Player, frame: number}) => {
+function collision(a: GameObject, b: GameObject) {
+  // work out the corners (x1,x2,y1,y1) of each rectangle
+  // top left
+  let ax1 = a.pos.x + a.bboxStart.x;
+  let ay1 = a.pos.y + a.bboxStart.y;
+  // bottom right
+  let ax2 = a.pos.x + a.bboxEnd.x;
+  let ay2 = a.pos.y + a.bboxEnd.y;
+  // top left
+  let bx1 = b.pos.x + b.bboxStart.x;
+  let by1 = b.pos.y + b.bboxStart.y;
+  // bottom right
+  let bx2 = b.pos.x + b.bboxEnd.x;
+  let by2 = b.pos.y + b.bboxEnd.y;
+
+  // test rectangular overlap
+  return !(ax1 > bx2 || bx1 > ax2 || ay1 > by2 || by1 > ay2);
+}
+
+class Game {
+  frame = 0;
+  player = new Player();
+  keys: KeyStates = {
+    up: false,
+    down: false,
+    left: false,
+    right: false,
+  };
+
+  worldObjects = [];
+  constructor() {
+    this._spawnTents();
+    this.worldObjects.push(this.player);
+  }
+
+  _spawnTents() {
+    for (var i = 0; i < TENTS_PER_ROW * 5; i++) {
+      const tent = new Tent();
+      tent.pos.x =
+        TENT_START_POS.x +
+        (i % TENTS_PER_ROW) * TENT_GROUND_WIDTH +
+        Math.floor(Math.random() * TENT_GROUND_WIDTH / 8);
+      tent.pos.y =
+        TENT_START_POS.y +
+        Math.floor(i / TENTS_PER_ROW) * TENT_GROUND_HEIGHT +
+        Math.floor(Math.random() * TENT_GROUND_HEIGHT / 8);
+      this.worldObjects.push(tent);
+    }
+  }
+
+  update() {
+    this.player.update(this);
+    this._detectCollisions();
+  }
+
+  _detectCollisions() {
+    for (var i = this.worldObjects.length - 1; i >= 0; i--) {
+      const object = this.worldObjects[i];
+      for (var k = this.worldObjects.length - 1; k >= 0; k--) {
+        const otherObject = this.worldObjects[k];
+        if (object !== otherObject) {
+          if (collision(object, otherObject)) {
+            this._handleCollision(object, otherObject);
+          }
+        }
+      }
+    }
+  }
+
+  _handleCollision(object, otherObject) {
+    if (object instanceof Player && otherObject instanceof Tent) {
+      object.pos.sub(object.lastMove);
+    }
+  }
+}
+
+const Guy = (props: {game: Game}) => {
   // TODO: move this to player class
-  const facingRight = props.player.lastMove.x > 0;
+  const facingRight = props.game.player.lastMove.x > 0;
 
   return (
     <img
-      src={props.player.sprite}
+      src={props.game.player.sprite}
       className="sprite"
       style={{
         position: 'absolute',
-        transform: `translate(${toScreenPx(props.player.pos.x)}px, ${toScreenPx(
-          props.player.pos.y
+        transform: `translate(${toScreenPx(
+          props.game.player.pos.x
+        )}px, ${toScreenPx(
+          props.game.player.pos.y
         )}px) scale(${SCALE}) scaleX(${facingRight ? -1 : 1})`,
       }}
     />
   );
 };
 
-type GameState = {frame: number, player: Player, keys: Keys};
+const Hud = (props: {game: Game}) => (
+  <div style={{position: 'absolute', top: 0, left: 0}}>
+    <div>
+      <div className="statbarlabel">Piss: </div>
+      <div
+        className="statbar"
+        style={{background: '#ff4', width: props.game.player.piss * 10}}
+      />
+    </div>
+    <div>
+      <div className="statbarlabel">Energy: </div>
+      <div
+        className="statbar"
+        style={{background: '#f44', width: props.game.player.energy * 10}}
+      />
+    </div>
+  </div>
+);
 
 class App extends Component<{}, void> {
-  game: GameState = {
-    frame: 0,
-    player: new Player(),
-    keys: makeKeys(),
-  };
+  game = new Game();
   componentDidMount() {
     document.addEventListener('keydown', (event: KeyboardEvent) =>
       this._handleKey(event, true)
@@ -172,7 +259,7 @@ class App extends Component<{}, void> {
     });
   }
   _update() {
-    this.game.player.update(this.game);
+    this.game.update();
   }
   render() {
     return (
@@ -190,7 +277,8 @@ class App extends Component<{}, void> {
             }}
           />
         ))}
-        <Guy frame={this.game.frame} player={this.game.player} />
+        <Guy game={this.game} />
+        <Hud game={this.game} />
       </div>
     );
   }

@@ -21,6 +21,12 @@ export default class Vec2d {
     return this;
   }
 
+  sub(other: Vec2d) {
+    this.x -= other.x;
+    this.y -= other.y;
+    return this;
+  }
+
   normalise() {
     if (this.x == 0 && this.y == 0) return this;
 
