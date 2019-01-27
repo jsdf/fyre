@@ -1,10 +1,15 @@
+body {
+  background: url('./assets/dssand2.png');
+  background-repeat: both;
+}
+
 .App {
   text-align: center;
 }
 
-.App-logo {
-  animation: App-logo-spin infinite 20s linear;
-  height: 40vmin;
+.sprite {
+  -ms-interpolation-mode: nearest-neighbour;
+  image-rendering: pixelated;
 }
 
 .App-header {
@@ -20,13 +25,4 @@
 
 .App-link {
   color: #61dafb;
-}
-
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
 }
