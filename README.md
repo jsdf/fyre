@@ -23,3 +23,9 @@ so you better hurry
 - sad environmental dialog from festivalgoers
 - swimming?
 
+### dialogue
+- "Do you think there is somewhere I can charge my drone?"
+- "Where can I charge my drone?"
+- "I'm making sure to shoot in both horizontal & vertical video formats"
+- "They're air pods not ear pods"
+- "I quit my job to come to this"

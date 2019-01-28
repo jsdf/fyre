@@ -22,3 +22,14 @@ body {
   display: inline-block;
   margin-right: 4px;
 }
+
+.objectdebug {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-size: 10px;
+}
+
+.object {
+  position: absolute;
+}

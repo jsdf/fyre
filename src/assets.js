@@ -1,5 +1,6 @@
 export default {
   dstent: require('./assets/dstent.png'),
+  dstentdmg: require('./assets/dstentdmg.png'),
   cheese: require('./assets/cheese.png'),
   water: require('./assets/water2.png'),
   guystill: require('./assets/guystill.png'),

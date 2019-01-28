@@ -41,4 +41,8 @@ export default class Vec2d {
     this.y *= scalar;
     return this;
   }
+
+  distanceTo(other: Vec2d) {
+    return Math.sqrt((this.x - other.x) ** 2 + (this.y - other.y) ** 2);
+  }
 }

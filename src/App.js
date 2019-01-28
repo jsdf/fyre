@@ -33,6 +33,7 @@ class GameObject {
   sprite = '';
   bboxStart = new Vec2d(); // top left
   bboxEnd = new Vec2d(); // bottom right
+  enabled = true;
 
   constructor(init?: {x: number, y: number}) {
     if (init) {
@@ -50,11 +51,25 @@ class Tent extends GameObject {
   sprite = assets.dstent;
   bboxStart = new Vec2d({x: 3, y: 18});
   bboxEnd = new Vec2d({x: 38, y: 33});
+  health = 3;
+
+  damage() {
+    if (this.health > 0) {
+      this.health--;
+      return true;
+    } else {
+      this.sprite = assets.dstentdmg;
+    }
+    return false;
+  }
 }
 
 class Powerup extends GameObject {
   update(game: Game) {
     this.pos.y += Math.sin(game.frame / 10 + this.id % 10);
+  }
+  pickedUp(player: Player) {
+    // noop
   }
 }
 
@@ -62,12 +77,26 @@ class Water extends Powerup {
   sprite = assets.water;
   bboxStart = new Vec2d({x: 14, y: 6});
   bboxEnd = new Vec2d({x: 58, y: 57});
+  static VALUE = 3;
+
+  pickedUp(player: Player) {
+    player.piss = Math.min(player.piss + Water.VALUE, Player.MAX_PISS);
+    this.enabled = false;
+  }
 }
 
 class CheeseSandwich extends Powerup {
   sprite = assets.cheese;
   bboxStart = new Vec2d({x: 20, y: 22});
   bboxEnd = new Vec2d({x: 43, y: 44});
+  static VALUE = 3;
+  pickedUp(player: Player) {
+    player.energy = Math.min(
+      player.energy + CheeseSandwich.VALUE,
+      Player.MAX_ENERGY
+    );
+    this.enabled = false;
+  }
 }
 
 class FestivalGoer extends GameObject {
@@ -119,6 +148,16 @@ class FestivalGoer extends GameObject {
   }
 }
 
+function typeFilter<T>(objs: Array<GameObject>, Typeclass: Class<T>): Array<T> {
+  const result = [];
+  for (var i = 0; i < objs.length; i++) {
+    if (objs[i] instanceof Typeclass) {
+      result.push(objs[i]);
+    }
+  }
+  return result;
+}
+
 class Player extends FestivalGoer {
   piss = 10;
   energy = 10;
@@ -127,9 +166,12 @@ class Player extends FestivalGoer {
   bboxEnd = new Vec2d({x: 17, y: 23});
   lastMove = new Vec2d();
   isMoving = false;
-  static MOVEMENT_SPEED = 2;
   stillSprite = assets.guystill;
   walkAnim = [assets.guywalkcycle1, assets.guywalkcycle2, assets.guywalkcycle3];
+  target: ?Tent = null;
+  static MOVEMENT_SPEED = 2;
+  static MAX_PISS = 10;
+  static MAX_ENERGY = 10;
 
   update(game: Game) {
     let playerMove = new Vec2d();
@@ -147,8 +189,33 @@ class Player extends FestivalGoer {
     } else {
       this.isMoving = false;
     }
+    const tentsByDistance = typeFilter(game.worldObjects, Tent).sort(
+      (a, b) => a.pos.distanceTo(this.pos) - b.pos.distanceTo(this.pos)
+    );
+    const target = tentsByDistance[0];
+    this.target = target;
+
+    if (game.keys.attack) {
+      if (collision(target, this)) {
+        this.doAttack(target);
+      } else {
+        this.doPiss();
+      }
+    }
 
     this.animUpdate(game);
+  }
+
+  doAttack(tent: Tent) {
+    if (this.energy && tent.damage()) {
+      this.energy--;
+    }
+  }
+
+  doPiss() {
+    if (this.piss) {
+      this.piss--;
+    }
   }
 }
 
@@ -217,6 +284,7 @@ class Game {
       this.worldObjects.push(new FestivalGoer());
     }
   }
+
   _spawnPowerups() {
     for (var i = 0; i < 4; i++) {
       const idx = i * 7; // skip
@@ -260,8 +328,13 @@ class Game {
   }
 
   _handleCollision(object: GameObject, otherObject: GameObject) {
+    if (!otherObject.enabled) return;
     if (object instanceof FestivalGoer && otherObject instanceof Tent) {
       object.pos.sub(object.lastMove);
+    }
+
+    if (object instanceof Player && otherObject instanceof Powerup) {
+      otherObject.pickedUp(object);
     }
   }
 }
@@ -300,6 +373,15 @@ const Hud = (props: {game: Game}) => (
         style={{background: '#f44', width: props.game.player.energy * 10}}
       />
     </div>
+    <pre>
+      {JSON.stringify(
+        {
+          target: props.game.player.target && props.game.player.target.id,
+        },
+        null,
+        2
+      )}
+    </pre>
   </div>
 );
 
@@ -338,7 +420,7 @@ class App extends Component<{}, void> {
         this.game.keys.right = pressed;
         break;
       }
-      case 'Space': {
+      case ' ': {
         this.game.keys.attack = pressed;
         break;
       }
@@ -359,23 +441,27 @@ class App extends Component<{}, void> {
     return (
       <div className="App">
         {this.game.worldObjects.map((obj, i) => {
+          if (!obj.enabled) {
+            return <div key={`disabled${i}`} />;
+          }
           if (obj instanceof Player) {
             return <FestivalGoerImage person={obj} key={obj.id} />;
           } else if (obj instanceof FestivalGoer) {
             return <FestivalGoerImage person={obj} key={obj.id} />;
           } else {
             return (
-              <img
-                src={obj.sprite}
-                className="sprite"
+              <div
                 key={obj.id}
+                className="object"
                 style={{
-                  position: 'absolute',
                   transform: `translate(${toScreenPx(
                     obj.pos.x
                   )}px, ${toScreenPx(obj.pos.y)}px) scale(${SCALE})`,
                 }}
-              />
+              >
+                <img src={obj.sprite} className="sprite" />
+                <span className="objectdebug">{obj.id}</span>
+              </div>
             );
           }
         })}
