@@ -8,6 +8,7 @@ const TENTS_PER_ROW = 10;
 const TENT_GROUND_WIDTH = 96;
 const TENT_GROUND_HEIGHT = 64;
 const SCALE = 2;
+const DEBUG = false;
 
 const TENT_START_POS = new Vec2d({x: 20, y: 20});
 
@@ -48,10 +49,11 @@ class GameObject {
 }
 
 class Tent extends GameObject {
+  pissiness = 0;
+  health = 3;
   sprite = assets.dstent;
   bboxStart = new Vec2d({x: 3, y: 18});
   bboxEnd = new Vec2d({x: 38, y: 33});
-  health = 3;
 
   damage() {
     if (this.health > 0) {
@@ -59,6 +61,13 @@ class Tent extends GameObject {
       return true;
     } else {
       this.sprite = assets.dstentdmg;
+    }
+    return false;
+  }
+  damage() {
+    if (this.pissiness < 3) {
+      this.pissiness++;
+      return true;
     }
     return false;
   }
@@ -199,7 +208,7 @@ class Player extends FestivalGoer {
       if (collision(target, this)) {
         this.doAttack(target);
       } else {
-        this.doPiss();
+        this.doPiss(target);
       }
     }
 
@@ -212,7 +221,7 @@ class Player extends FestivalGoer {
     }
   }
 
-  doPiss() {
+  doPiss(tent: Tent) {
     if (this.piss) {
       this.piss--;
     }
@@ -374,13 +383,14 @@ const Hud = (props: {game: Game}) => (
       />
     </div>
     <pre>
-      {JSON.stringify(
-        {
-          target: props.game.player.target && props.game.player.target.id,
-        },
-        null,
-        2
-      )}
+      {DEBUG &&
+        JSON.stringify(
+          {
+            target: props.game.player.target && props.game.player.target.id,
+          },
+          null,
+          2
+        )}
     </pre>
   </div>
 );
@@ -438,6 +448,7 @@ class App extends Component<{}, void> {
     this.game.update();
   }
   render() {
+    const {target} = this.game.player;
     return (
       <div className="App">
         {this.game.worldObjects.map((obj, i) => {
@@ -460,11 +471,24 @@ class App extends Component<{}, void> {
                 }}
               >
                 <img src={obj.sprite} className="sprite" />
-                <span className="objectdebug">{obj.id}</span>
+                {DEBUG && <span className="objectdebug">{obj.id}</span>}
               </div>
             );
           }
         })}
+        {target && (
+          <div
+            key="target"
+            className="object"
+            style={{
+              transform: `translate(${toScreenPx(target.pos.x)}px, ${toScreenPx(
+                target.pos.y
+              )}px) scale(${SCALE})`,
+            }}
+          >
+            <img src={assets.target} className="sprite" />
+          </div>
+        )}
         <Hud game={this.game} />
       </div>
     );

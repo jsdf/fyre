@@ -11,4 +11,5 @@ export default {
   personwalkcycle1: require('./assets/personwalkcycle1.png'),
   personwalkcycle2: require('./assets/personwalkcycle2.png'),
   personwalkcycle3: require('./assets/personwalkcycle3.png'),
+  target: require('./assets/target.png'),
 };
