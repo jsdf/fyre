@@ -81,6 +81,12 @@ class Tent extends GameObject {
     }
     return false;
   }
+
+  isUsable() {
+    return (
+      this.pissiness < Tent.MAX_PISSINESS && this.damageTaken < Tent.MAX_DAMAGE
+    );
+  }
 }
 
 class Powerup extends GameObject {
@@ -118,13 +124,24 @@ class CheeseSandwich extends Powerup {
   }
 }
 
+function typeFilter<T>(objs: Array<GameObject>, Typeclass: Class<T>): Array<T> {
+  const result = [];
+  for (var i = 0; i < objs.length; i++) {
+    if (objs[i] instanceof Typeclass) {
+      result.push(objs[i]);
+    }
+  }
+  return result;
+}
+
 class FestivalGoer extends GameObject {
-  pos = new Vec2d({x: 300, y: 200});
+  pos = new Vec2d({x: 100 + Math.floor(Math.random() * 300), y: 300});
   bboxStart = new Vec2d({x: 13, y: 18});
   bboxEnd = new Vec2d({x: 17, y: 23});
   lastMove = new Vec2d();
   isMoving = false;
-  static MOVEMENT_SPEED = 2;
+  target: ?Tent = null;
+  static MOVEMENT_SPEED = 1;
   stillSprite = assets.personstill;
   walkAnim = [
     assets.personwalkcycle1,
@@ -133,13 +150,31 @@ class FestivalGoer extends GameObject {
   ];
   static FRAMES_PER_ANIM_FRAME = 3;
 
+  acquireTarget(game: Game) {
+    const tents = typeFilter(game.worldObjects, Tent);
+
+    const candidate = tents[Math.floor(Math.random() * tents.length)];
+
+    if (candidate.isUsable()) {
+      this.target = candidate;
+    }
+  }
+
   update(game: Game) {
+    if (!this.target) {
+      this.acquireTarget(game);
+    }
     let playerMove = new Vec2d();
-    DIRECTIONS.forEach(direction => {
-      if (Math.round(Math.random())) {
-        playerMove.add(DIRECTIONS_VECTORS[direction]);
-      }
-    });
+
+    if (this.target) {
+      playerMove.add(this.pos.directionTo(this.target.pos));
+    }
+
+    // DIRECTIONS.forEach(direction => {
+    //   if (Math.round(Math.random())) {
+    //     playerMove.add(DIRECTIONS_VECTORS[direction]);
+    //   }
+    // });
 
     if (playerMove.x !== 0 || playerMove.y !== 0) {
       playerMove = getMovementVelocity(playerMove, FestivalGoer.MOVEMENT_SPEED);
@@ -167,27 +202,14 @@ class FestivalGoer extends GameObject {
   }
 }
 
-function typeFilter<T>(objs: Array<GameObject>, Typeclass: Class<T>): Array<T> {
-  const result = [];
-  for (var i = 0; i < objs.length; i++) {
-    if (objs[i] instanceof Typeclass) {
-      result.push(objs[i]);
-    }
-  }
-  return result;
-}
-
 class Player extends FestivalGoer {
   piss = 10;
   energy = 10;
   pos = new Vec2d({x: 300, y: 200});
   bboxStart = new Vec2d({x: 13, y: 18});
   bboxEnd = new Vec2d({x: 17, y: 23});
-  lastMove = new Vec2d();
-  isMoving = false;
   stillSprite = assets.guystill;
   walkAnim = [assets.guywalkcycle1, assets.guywalkcycle2, assets.guywalkcycle3];
-  target: ?Tent = null;
   static MOVEMENT_SPEED = 2;
   static MAX_PISS = 10;
   static MAX_ENERGY = 10;
@@ -286,7 +308,7 @@ class Game {
   constructor() {
     this._spawnTents();
     this.worldObjects.push(this.player);
-    // this._spawnPeople();
+    this._spawnPeople();
     this._spawnPowerups();
   }
 
@@ -371,16 +393,23 @@ const FestivalGoerImage = (props: {person: FestivalGoer}) => {
   const facingRight = props.person.lastMove.x > 0;
 
   return (
-    <img
-      src={props.person.sprite}
-      className="sprite"
+    <div
       style={{
         position: 'absolute',
         transform: `translate(${toScreenPx(props.person.pos.x)}px, ${toScreenPx(
           props.person.pos.y
-        )}px) scale(${SCALE}) scaleX(${facingRight ? -1 : 1})`,
+        )}px) scale(${SCALE}) `,
       }}
-    />
+    >
+      {props.person.target && (
+        <span className="objectdebug">{props.person.target.id}</span>
+      )}
+      <img
+        style={{transform: `scaleX(${facingRight ? -1 : 1})`}}
+        src={props.person.sprite}
+        className="sprite"
+      />
+    </div>
   );
 };
 
@@ -498,8 +527,7 @@ class App extends Component<{}, void> {
                 }}
               >
                 <img src={obj.sprite} className="sprite" />
-                {DEBUG &&
-                  false && <span className="objectdebug">{obj.id}</span>}
+                {DEBUG && <span className="objectdebug">{obj.id}</span>}
               </div>
             );
           }

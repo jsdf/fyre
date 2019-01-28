@@ -51,4 +51,11 @@ export default class Vec2d {
   distanceTo(other: Vec2d) {
     return Math.sqrt((this.x - other.x) ** 2 + (this.y - other.y) ** 2);
   }
+
+  directionTo(other: Vec2d) {
+    return other
+      .clone()
+      .sub(this)
+      .normalise();
+  }
 }
