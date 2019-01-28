@@ -45,7 +45,56 @@ class Tent extends GameObject {
   bboxEnd = new Vec2d({x: 38, y: 33});
 }
 
-class Player extends GameObject {
+class FestivalGoer extends GameObject {
+  pos = new Vec2d({x: 300, y: 200});
+  bboxStart = new Vec2d({x: 13, y: 18});
+  bboxEnd = new Vec2d({x: 17, y: 23});
+  lastMove = new Vec2d();
+  isMoving = false;
+  static MOVEMENT_SPEED = 2;
+  stillSprite = assets.personstill;
+  walkAnim = [
+    assets.personwalkcycle1,
+    assets.personwalkcycle2,
+    assets.personwalkcycle3,
+  ];
+  static FRAMES_PER_ANIM_FRAME = 3;
+
+  update(game: Game) {
+    let playerMove = new Vec2d();
+    DIRECTIONS.forEach(direction => {
+      if (Math.round(Math.random())) {
+        playerMove.add(DIRECTIONS_VECTORS[direction]);
+      }
+    });
+
+    if (playerMove.x !== 0 || playerMove.y !== 0) {
+      playerMove = getMovementVelocity(playerMove, FestivalGoer.MOVEMENT_SPEED);
+      this.pos.add(playerMove);
+      this.lastMove = playerMove;
+      this.isMoving = true;
+    } else {
+      this.isMoving = false;
+    }
+
+    this.animUpdate(game);
+  }
+
+  animUpdate(game: Game) {
+    if (this.isMoving) {
+      this.sprite = this.walkAnim[
+        Math.floor(
+          Math.floor(game.frame / FestivalGoer.FRAMES_PER_ANIM_FRAME) %
+            this.walkAnim.length
+        )
+      ];
+    } else {
+      this.sprite = this.stillSprite;
+    }
+  }
+}
+
+class Player extends FestivalGoer {
   piss = 10;
   energy = 10;
   pos = new Vec2d({x: 300, y: 200});
@@ -54,12 +103,8 @@ class Player extends GameObject {
   lastMove = new Vec2d();
   isMoving = false;
   static MOVEMENT_SPEED = 2;
-  static GUY_ANIM = [
-    assets.guywalkcycle1,
-    assets.guywalkcycle2,
-    assets.guywalkcycle3,
-  ];
-  static FRAMES_PER_ANIM_FRAME = 3;
+  stillSprite = assets.guystill;
+  walkAnim = [assets.guywalkcycle1, assets.guywalkcycle2, assets.guywalkcycle3];
 
   update(game: Game) {
     let playerMove = new Vec2d();
@@ -78,17 +123,7 @@ class Player extends GameObject {
       this.isMoving = false;
     }
 
-    if (this.isMoving) {
-      this.sprite =
-        Player.GUY_ANIM[
-          Math.floor(
-            Math.floor(game.frame / Player.FRAMES_PER_ANIM_FRAME) %
-              Player.GUY_ANIM.length
-          )
-        ];
-    } else {
-      this.sprite = assets.guystill;
-    }
+    this.animUpdate(game);
   }
 }
 
@@ -131,6 +166,7 @@ class Game {
   constructor() {
     this._spawnTents();
     this.worldObjects.push(this.player);
+    // this._spawnPeople();
   }
 
   _spawnTents() {
@@ -148,8 +184,16 @@ class Game {
     }
   }
 
+  _spawnPeople() {
+    for (var i = 0; i < 10; i++) {
+      this.worldObjects.push(new FestivalGoer());
+    }
+  }
+
   update() {
-    this.player.update(this);
+    for (var i = 0; i < this.worldObjects.length; i++) {
+      this.worldObjects[i].update(this);
+    }
     this._detectCollisions();
   }
 
@@ -167,27 +211,25 @@ class Game {
     }
   }
 
-  _handleCollision(object, otherObject) {
-    if (object instanceof Player && otherObject instanceof Tent) {
+  _handleCollision(object: GameObject, otherObject: GameObject) {
+    if (object instanceof FestivalGoer && otherObject instanceof Tent) {
       object.pos.sub(object.lastMove);
     }
   }
 }
 
-const Guy = (props: {game: Game}) => {
+const FestivalGoerImage = (props: {person: FestivalGoer}) => {
   // TODO: move this to player class
-  const facingRight = props.game.player.lastMove.x > 0;
+  const facingRight = props.person.lastMove.x > 0;
 
   return (
     <img
-      src={props.game.player.sprite}
+      src={props.person.sprite}
       className="sprite"
       style={{
         position: 'absolute',
-        transform: `translate(${toScreenPx(
-          props.game.player.pos.x
-        )}px, ${toScreenPx(
-          props.game.player.pos.y
+        transform: `translate(${toScreenPx(props.person.pos.x)}px, ${toScreenPx(
+          props.person.pos.y
         )}px) scale(${SCALE}) scaleX(${facingRight ? -1 : 1})`,
       }}
     />
@@ -264,20 +306,29 @@ class App extends Component<{}, void> {
   render() {
     return (
       <div className="App">
-        {STATIC_OBJECTS.map(obj => (
-          <img
-            src={obj.sprite}
-            className="sprite"
-            key={obj.id}
-            style={{
-              position: 'absolute',
-              transform: `translate(${toScreenPx(obj.pos.x)}px, ${toScreenPx(
-                obj.pos.y
-              )}px) scale(${SCALE})`,
-            }}
-          />
-        ))}
-        <Guy game={this.game} />
+        {this.game.worldObjects.map((obj, i) => {
+          if (obj instanceof Tent) {
+            return (
+              <img
+                src={obj.sprite}
+                className="sprite"
+                key={obj.id}
+                style={{
+                  position: 'absolute',
+                  transform: `translate(${toScreenPx(
+                    obj.pos.x
+                  )}px, ${toScreenPx(obj.pos.y)}px) scale(${SCALE})`,
+                }}
+              />
+            );
+          } else if (obj instanceof Player) {
+            return <FestivalGoerImage person={obj} key={obj.id} />;
+          } else if (obj instanceof FestivalGoer) {
+            return <FestivalGoerImage person={obj} key={obj.id} />;
+          } else {
+            return <div key={`idx${i}`} />;
+          }
+        })}
         <Hud game={this.game} />
       </div>
     );
