@@ -5,7 +5,7 @@ import React, {Component} from 'react';
 import Vec2d from './Vec2d';
 
 const TENTS_PER_ROW = 10;
-const TENT_GROUND_WIDTH = 64;
+const TENT_GROUND_WIDTH = 96;
 const TENT_GROUND_HEIGHT = 64;
 const SCALE = 2;
 
@@ -17,7 +17,7 @@ function toScreenPx(px) {
 
 type Direction = 'up' | 'down' | 'left' | 'right';
 const DIRECTIONS: Array<Direction> = ['up', 'down', 'left', 'right'];
-type KeyStates = {['up' | 'down' | 'left' | 'right']: boolean};
+type KeyStates = {['up' | 'down' | 'left' | 'right' | 'attack']: boolean};
 
 const DIRECTIONS_VECTORS = {
   up: new Vec2d({x: 0, y: -1}),
@@ -34,6 +34,13 @@ class GameObject {
   bboxStart = new Vec2d(); // top left
   bboxEnd = new Vec2d(); // bottom right
 
+  constructor(init?: {x: number, y: number}) {
+    if (init) {
+      this.pos.x = init.x;
+      this.pos.y = init.y;
+    }
+  }
+
   update(game: Game) {
     // noop
   }
@@ -43,6 +50,24 @@ class Tent extends GameObject {
   sprite = assets.dstent;
   bboxStart = new Vec2d({x: 3, y: 18});
   bboxEnd = new Vec2d({x: 38, y: 33});
+}
+
+class Powerup extends GameObject {
+  update(game: Game) {
+    this.pos.y += Math.sin(game.frame / 10 + this.id % 10);
+  }
+}
+
+class Water extends Powerup {
+  sprite = assets.water;
+  bboxStart = new Vec2d({x: 14, y: 6});
+  bboxEnd = new Vec2d({x: 58, y: 57});
+}
+
+class CheeseSandwich extends Powerup {
+  sprite = assets.cheese;
+  bboxStart = new Vec2d({x: 20, y: 22});
+  bboxEnd = new Vec2d({x: 43, y: 44});
 }
 
 class FestivalGoer extends GameObject {
@@ -160,6 +185,7 @@ class Game {
     down: false,
     left: false,
     right: false,
+    attack: false,
   };
 
   worldObjects = [];
@@ -167,19 +193,21 @@ class Game {
     this._spawnTents();
     this.worldObjects.push(this.player);
     // this._spawnPeople();
+    this._spawnPowerups();
   }
 
   _spawnTents() {
     for (var i = 0; i < TENTS_PER_ROW * 5; i++) {
+      const randomnessInv = 6;
       const tent = new Tent();
       tent.pos.x =
         TENT_START_POS.x +
         (i % TENTS_PER_ROW) * TENT_GROUND_WIDTH +
-        Math.floor(Math.random() * TENT_GROUND_WIDTH / 8);
+        Math.floor(Math.random() * TENT_GROUND_WIDTH / randomnessInv);
       tent.pos.y =
         TENT_START_POS.y +
         Math.floor(i / TENTS_PER_ROW) * TENT_GROUND_HEIGHT +
-        Math.floor(Math.random() * TENT_GROUND_HEIGHT / 8);
+        Math.floor(Math.random() * TENT_GROUND_HEIGHT / randomnessInv);
       this.worldObjects.push(tent);
     }
   }
@@ -187,6 +215,26 @@ class Game {
   _spawnPeople() {
     for (var i = 0; i < 10; i++) {
       this.worldObjects.push(new FestivalGoer());
+    }
+  }
+  _spawnPowerups() {
+    for (var i = 0; i < 4; i++) {
+      const idx = i * 7; // skip
+      const col = idx % TENTS_PER_ROW;
+      const row = Math.floor(idx / TENTS_PER_ROW);
+      const initPos = {
+        x:
+          TENT_START_POS.x +
+          TENT_GROUND_WIDTH * col /*skip*/ +
+          TENT_GROUND_WIDTH / 2 /*offset*/,
+        y:
+          TENT_START_POS.y +
+          TENT_GROUND_HEIGHT * row /*skip*/ +
+          TENT_GROUND_HEIGHT / 2 /*offset*/,
+      };
+      this.worldObjects.push(
+        i % 2 == 1 ? new Water(initPos) : new CheeseSandwich(initPos)
+      );
     }
   }
 
@@ -290,6 +338,10 @@ class App extends Component<{}, void> {
         this.game.keys.right = pressed;
         break;
       }
+      case 'Space': {
+        this.game.keys.attack = pressed;
+        break;
+      }
     }
   }
   _enqueueFrame() {
@@ -307,7 +359,11 @@ class App extends Component<{}, void> {
     return (
       <div className="App">
         {this.game.worldObjects.map((obj, i) => {
-          if (obj instanceof Tent) {
+          if (obj instanceof Player) {
+            return <FestivalGoerImage person={obj} key={obj.id} />;
+          } else if (obj instanceof FestivalGoer) {
+            return <FestivalGoerImage person={obj} key={obj.id} />;
+          } else {
             return (
               <img
                 src={obj.sprite}
@@ -321,12 +377,6 @@ class App extends Component<{}, void> {
                 }}
               />
             );
-          } else if (obj instanceof Player) {
-            return <FestivalGoerImage person={obj} key={obj.id} />;
-          } else if (obj instanceof FestivalGoer) {
-            return <FestivalGoerImage person={obj} key={obj.id} />;
-          } else {
-            return <div key={`idx${i}`} />;
           }
         })}
         <Hud game={this.game} />
