@@ -8,7 +8,7 @@ const TENTS_PER_ROW = 10;
 const TENT_GROUND_WIDTH = 96;
 const TENT_GROUND_HEIGHT = 64;
 const SCALE = 2;
-const DEBUG = false;
+const DEBUG = true;
 
 const TENT_START_POS = new Vec2d({x: 20, y: 20});
 
@@ -46,26 +46,36 @@ class GameObject {
   update(game: Game) {
     // noop
   }
+
+  getCenter() {
+    return this.pos
+      .clone()
+      .add(this.bboxStart)
+      .add(this.bboxEnd.clone().divideScalar(2));
+  }
 }
 
 class Tent extends GameObject {
   pissiness = 0;
-  health = 3;
+  damageTaken = 0;
   sprite = assets.dstent;
-  bboxStart = new Vec2d({x: 3, y: 18});
+  bboxStart = new Vec2d({x: 3, y: 8});
   bboxEnd = new Vec2d({x: 38, y: 33});
+  static MAX_DAMAGE = 3;
+  static MAX_PISSINESS = 3;
 
   damage() {
-    if (this.health > 0) {
-      this.health--;
+    if (this.damageTaken < Tent.MAX_DAMAGE) {
+      this.damageTaken++;
+      if (this.damageTaken === Tent.MAX_DAMAGE) {
+        this.sprite = assets.dstentdmg;
+      }
       return true;
-    } else {
-      this.sprite = assets.dstentdmg;
     }
     return false;
   }
-  damage() {
-    if (this.pissiness < 3) {
+  pissOn() {
+    if (this.pissiness < Tent.MAX_PISSINESS) {
       this.pissiness++;
       return true;
     }
@@ -182,6 +192,12 @@ class Player extends FestivalGoer {
   static MAX_PISS = 10;
   static MAX_ENERGY = 10;
 
+  withinAttackRange() {
+    return (
+      this.target && this.pos.distanceTo(this.target.pos) < 30
+    ); /*close to tent*/
+  }
+
   update(game: Game) {
     let playerMove = new Vec2d();
     DIRECTIONS.forEach(direction => {
@@ -198,6 +214,8 @@ class Player extends FestivalGoer {
     } else {
       this.isMoving = false;
     }
+
+    // find target
     const tentsByDistance = typeFilter(game.worldObjects, Tent).sort(
       (a, b) => a.pos.distanceTo(this.pos) - b.pos.distanceTo(this.pos)
     );
@@ -205,7 +223,7 @@ class Player extends FestivalGoer {
     this.target = target;
 
     if (game.keys.attack) {
-      if (collision(target, this)) {
+      if (this.withinAttackRange()) {
         this.doAttack(target);
       } else {
         this.doPiss(target);
@@ -222,7 +240,7 @@ class Player extends FestivalGoer {
   }
 
   doPiss(tent: Tent) {
-    if (this.piss) {
+    if (this.piss && tent.pissOn()) {
       this.piss--;
     }
   }
@@ -366,34 +384,43 @@ const FestivalGoerImage = (props: {person: FestivalGoer}) => {
   );
 };
 
-const Hud = (props: {game: Game}) => (
-  <div style={{position: 'absolute', top: 0, left: 0}}>
-    <div>
-      <div className="statbarlabel">Piss: </div>
-      <div
-        className="statbar"
-        style={{background: '#ff4', width: props.game.player.piss * 10}}
-      />
+const Hud = (props: {game: Game}) => {
+  const {target} = props.game.player;
+  return (
+    <div style={{position: 'absolute', top: 0, left: 0}}>
+      <div>
+        <div className="statbarlabel">Piss: </div>
+        <div
+          className="statbar"
+          style={{background: '#ff4', width: props.game.player.piss * 10}}
+        />
+      </div>
+      <div>
+        <div className="statbarlabel">Energy: </div>
+        <div
+          className="statbar"
+          style={{background: '#f44', width: props.game.player.energy * 10}}
+        />
+      </div>
+      <pre>
+        {DEBUG &&
+          JSON.stringify(
+            {
+              target: target && {
+                id: target.id,
+                distanceTo: props.game.player
+                  .getCenter()
+                  .distanceTo(target.getCenter())
+                  .toFixed(2),
+              },
+            },
+            null,
+            2
+          )}
+      </pre>
     </div>
-    <div>
-      <div className="statbarlabel">Energy: </div>
-      <div
-        className="statbar"
-        style={{background: '#f44', width: props.game.player.energy * 10}}
-      />
-    </div>
-    <pre>
-      {DEBUG &&
-        JSON.stringify(
-          {
-            target: props.game.player.target && props.game.player.target.id,
-          },
-          null,
-          2
-        )}
-    </pre>
-  </div>
-);
+  );
+};
 
 class App extends Component<{}, void> {
   game = new Game();
@@ -471,7 +498,8 @@ class App extends Component<{}, void> {
                 }}
               >
                 <img src={obj.sprite} className="sprite" />
-                {DEBUG && <span className="objectdebug">{obj.id}</span>}
+                {DEBUG &&
+                  false && <span className="objectdebug">{obj.id}</span>}
               </div>
             );
           }
@@ -486,6 +514,11 @@ class App extends Component<{}, void> {
               )}px) scale(${SCALE})`,
             }}
           >
+            <div className="targetinfo">
+              {this.game.player.withinAttackRange()
+                ? `smash ${target.damageTaken}/${Tent.MAX_DAMAGE}`
+                : `piss ${target.pissiness}/${Tent.MAX_PISSINESS}`}
+            </div>
             <img src={assets.target} className="sprite" />
           </div>
         )}

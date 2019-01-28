@@ -42,6 +42,12 @@ export default class Vec2d {
     return this;
   }
 
+  divideScalar(scalar: number) {
+    this.x /= scalar;
+    this.y /= scalar;
+    return this;
+  }
+
   distanceTo(other: Vec2d) {
     return Math.sqrt((this.x - other.x) ** 2 + (this.y - other.y) ** 2);
   }
