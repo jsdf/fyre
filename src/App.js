@@ -3,12 +3,14 @@ import './App.css';
 import assets from './assets';
 import React, {Component} from 'react';
 import Vec2d from './Vec2d';
+import EasyStar from 'easystarjs';
 
+const TENT_ROWS = 6;
 const TENTS_PER_ROW = 10;
-const TENT_GROUND_WIDTH = 96;
-const TENT_GROUND_HEIGHT = 64;
+const TENT_SPACING_X = 96;
+const TENT_SPACING_Y = 64;
 const SCALE = 2;
-const DEBUG = true;
+const DEBUG = false;
 
 const TENT_START_POS = new Vec2d({x: 20, y: 20});
 
@@ -134,13 +136,32 @@ function typeFilter<T>(objs: Array<GameObject>, Typeclass: Class<T>): Array<T> {
   return result;
 }
 
+class Path {
+  points: Array<Vec2d>;
+  nextPointIndex: number = 0;
+  constructor(points: Array<Vec2d>) {
+    this.points = points;
+  }
+  advance() {
+    this.nextPointIndex++;
+  }
+  getNextPoint() {
+    return this.points[this.nextPointIndex];
+  }
+  nextPointIsDestination() {
+    return this.nextPointIndex >= this.points.length - 1;
+  }
+}
+
 class FestivalGoer extends GameObject {
-  pos = new Vec2d({x: 100 + Math.floor(Math.random() * 300), y: 300});
+  pos = new Vec2d({x: 100 + Math.floor(Math.random() * 300), y: 320});
   bboxStart = new Vec2d({x: 13, y: 18});
   bboxEnd = new Vec2d({x: 17, y: 23});
   lastMove = new Vec2d();
   isMoving = false;
+  isPathfinding = false;
   target: ?Tent = null;
+  path: ?Path = null;
   static MOVEMENT_SPEED = 1;
   stillSprite = assets.personstill;
   walkAnim = [
@@ -150,7 +171,7 @@ class FestivalGoer extends GameObject {
   ];
   static FRAMES_PER_ANIM_FRAME = 3;
 
-  acquireTarget(game: Game) {
+  tryAcquireTarget(game: Game) {
     const tents = typeFilter(game.worldObjects, Tent);
 
     const candidate = tents[Math.floor(Math.random() * tents.length)];
@@ -160,14 +181,48 @@ class FestivalGoer extends GameObject {
     }
   }
 
+  findPath(game: Game, target: Tent) {
+    this.isPathfinding = true;
+    const start = game.toPathfindingCoords(this.pos);
+    const end = game.toPathfindingCoords(target.pos);
+    end.y += 1;
+
+    game.easystar.findPath(start.x, start.y, end.x, end.y, gridPath => {
+      this.isPathfinding = false;
+      if (gridPath === null) {
+        console.error('pathfinding failed', this, {start, end});
+      } else {
+        this.path = new Path(
+          gridPath.map(gridPoint => game.fromPathfindingCoords(gridPoint))
+        );
+      }
+    });
+    game.easystar.calculate();
+  }
+
   update(game: Game) {
     if (!this.target) {
-      this.acquireTarget(game);
+      this.tryAcquireTarget(game);
     }
-    let playerMove = new Vec2d();
 
-    if (this.target) {
-      playerMove.add(this.pos.directionTo(this.target.pos));
+    let playerMove = new Vec2d();
+    const path = this.path;
+    const target = this.target;
+
+    if (target) {
+      if (!(path || this.isPathfinding)) {
+        this.findPath(game, target);
+      } else if (path) {
+        if (this.pos.distanceTo(path.getNextPoint()) < 1) {
+          path.advance();
+        }
+
+        if (!path.nextPointIsDestination()) {
+          playerMove.add(this.pos.directionTo(path.getNextPoint()));
+        } else {
+          playerMove.add(this.pos.directionTo(target.pos));
+        }
+      }
     }
 
     // DIRECTIONS.forEach(direction => {
@@ -305,6 +360,9 @@ class Game {
   };
 
   worldObjects = [];
+
+  easystar = new EasyStar.js();
+
   constructor() {
     this._spawnTents();
     this.worldObjects.push(this.player);
@@ -312,20 +370,79 @@ class Game {
     this._spawnPowerups();
   }
 
+  static PATHFINDING_GRID_PER_TENT = 2;
+
+  toPathfindingCoords(pos: Vec2d) {
+    const x = Math.min(
+      Math.floor(
+        (pos.x - TENT_START_POS.x) /
+          TENT_SPACING_X *
+          Game.PATHFINDING_GRID_PER_TENT
+      ),
+      TENTS_PER_ROW * Game.PATHFINDING_GRID_PER_TENT
+    );
+    const y = Math.min(
+      Math.floor(
+        (pos.y - TENT_START_POS.y) /
+          TENT_SPACING_Y *
+          Game.PATHFINDING_GRID_PER_TENT
+      ),
+      TENT_ROWS * Game.PATHFINDING_GRID_PER_TENT
+    );
+    return {x, y};
+  }
+  fromPathfindingCoords(point: {x: number, y: number}) {
+    const pos = new Vec2d();
+    pos.x =
+      point.x / Game.PATHFINDING_GRID_PER_TENT * TENT_SPACING_X +
+      TENT_START_POS.x;
+    pos.y =
+      point.y / Game.PATHFINDING_GRID_PER_TENT * TENT_SPACING_Y +
+      TENT_START_POS.y;
+    return pos;
+  }
+
   _spawnTents() {
-    for (var i = 0; i < TENTS_PER_ROW * 5; i++) {
+    for (var i = 0; i < TENTS_PER_ROW * TENT_ROWS; i++) {
+      const col = i % TENTS_PER_ROW;
+      const row = Math.floor(i / TENTS_PER_ROW);
+
       const randomnessInv = 6;
       const tent = new Tent();
       tent.pos.x =
         TENT_START_POS.x +
-        (i % TENTS_PER_ROW) * TENT_GROUND_WIDTH +
-        Math.floor(Math.random() * TENT_GROUND_WIDTH / randomnessInv);
+        col * TENT_SPACING_X +
+        Math.floor(Math.random() * TENT_SPACING_X / randomnessInv);
       tent.pos.y =
         TENT_START_POS.y +
-        Math.floor(i / TENTS_PER_ROW) * TENT_GROUND_HEIGHT +
-        Math.floor(Math.random() * TENT_GROUND_HEIGHT / randomnessInv);
+        row * TENT_SPACING_Y +
+        Math.floor(Math.random() * TENT_SPACING_Y / randomnessInv);
       this.worldObjects.push(tent);
     }
+
+    const pathfinding = [];
+    for (var i = 0; i < TENT_ROWS; i++) {
+      pathfinding[i * Game.PATHFINDING_GRID_PER_TENT] = [];
+
+      pathfinding[i * Game.PATHFINDING_GRID_PER_TENT + 1] = [];
+      for (var k = 0; k < TENTS_PER_ROW; k++) {
+        pathfinding[i * Game.PATHFINDING_GRID_PER_TENT][
+          k * Game.PATHFINDING_GRID_PER_TENT
+        ] = 1;
+        pathfinding[i * Game.PATHFINDING_GRID_PER_TENT][
+          k * Game.PATHFINDING_GRID_PER_TENT + 1
+        ] = 0;
+        pathfinding[i * Game.PATHFINDING_GRID_PER_TENT + 1][
+          k * Game.PATHFINDING_GRID_PER_TENT
+        ] = 0;
+        pathfinding[i * Game.PATHFINDING_GRID_PER_TENT + 1][
+          k * Game.PATHFINDING_GRID_PER_TENT + 1
+        ] = 0;
+      }
+    }
+    this.easystar.setGrid(pathfinding);
+    this.easystar.setAcceptableTiles([0]);
+    this.easystar.enableSync();
   }
 
   _spawnPeople() {
@@ -342,12 +459,12 @@ class Game {
       const initPos = {
         x:
           TENT_START_POS.x +
-          TENT_GROUND_WIDTH * col /*skip*/ +
-          TENT_GROUND_WIDTH / 2 /*offset*/,
+          TENT_SPACING_X * col /*skip*/ +
+          TENT_SPACING_X / 2 /*offset*/,
         y:
           TENT_START_POS.y +
-          TENT_GROUND_HEIGHT * row /*skip*/ +
-          TENT_GROUND_HEIGHT / 2 /*offset*/,
+          TENT_SPACING_Y * row /*skip*/ +
+          TENT_SPACING_Y / 2 /*offset*/,
       };
       this.worldObjects.push(
         i % 2 == 1 ? new Water(initPos) : new CheeseSandwich(initPos)
@@ -401,9 +518,10 @@ const FestivalGoerImage = (props: {person: FestivalGoer}) => {
         )}px) scale(${SCALE}) `,
       }}
     >
-      {props.person.target && (
-        <span className="objectdebug">{props.person.target.id}</span>
-      )}
+      {DEBUG &&
+        props.person.target && (
+          <span className="objectdebug">{props.person.target.id}</span>
+        )}
       <img
         style={{transform: `scaleX(${facingRight ? -1 : 1})`}}
         src={props.person.sprite}
@@ -545,7 +663,7 @@ class App extends Component<{}, void> {
             <div className="targetinfo">
               {this.game.player.withinAttackRange()
                 ? `smash ${target.damageTaken}/${Tent.MAX_DAMAGE}`
-                : `piss ${target.pissiness}/${Tent.MAX_PISSINESS}`}
+                : `piss on ${target.pissiness}/${Tent.MAX_PISSINESS}`}
             </div>
             <img src={assets.target} className="sprite" />
           </div>
