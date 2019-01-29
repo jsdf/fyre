@@ -6,7 +6,7 @@ import Vec2d from './Vec2d';
 import EasyStar from 'easystarjs';
 
 const TENT_ROWS = 6;
-const TENTS_PER_ROW = 10;
+const TENT_COLS = 10;
 const TENT_SPACING_X = 96;
 const TENT_SPACING_Y = 64;
 const SCALE = 2;
@@ -185,7 +185,7 @@ class FestivalGoer extends GameObject {
     this.isPathfinding = true;
     const start = game.toPathfindingCoords(this.pos);
     const end = game.toPathfindingCoords(target.pos);
-    end.y += 1;
+    end.y += 2;
 
     game.easystar.findPath(start.x, start.y, end.x, end.y, gridPath => {
       this.isPathfinding = false;
@@ -370,42 +370,35 @@ class Game {
     this._spawnPowerups();
   }
 
-  static PATHFINDING_GRID_PER_TENT = 2;
+  static PATH_GRID_MUL = 4;
+  static PATH_GRID_TENT_SIZE = 2;
 
   toPathfindingCoords(pos: Vec2d) {
     const x = Math.min(
       Math.floor(
-        (pos.x - TENT_START_POS.x) /
-          TENT_SPACING_X *
-          Game.PATHFINDING_GRID_PER_TENT
+        (pos.x - TENT_START_POS.x) / TENT_SPACING_X * Game.PATH_GRID_MUL
       ),
-      TENTS_PER_ROW * Game.PATHFINDING_GRID_PER_TENT
+      TENT_COLS * Game.PATH_GRID_MUL
     );
     const y = Math.min(
       Math.floor(
-        (pos.y - TENT_START_POS.y) /
-          TENT_SPACING_Y *
-          Game.PATHFINDING_GRID_PER_TENT
+        (pos.y - TENT_START_POS.y) / TENT_SPACING_Y * Game.PATH_GRID_MUL
       ),
-      TENT_ROWS * Game.PATHFINDING_GRID_PER_TENT
+      TENT_ROWS * Game.PATH_GRID_MUL
     );
     return {x, y};
   }
   fromPathfindingCoords(point: {x: number, y: number}) {
     const pos = new Vec2d();
-    pos.x =
-      point.x / Game.PATHFINDING_GRID_PER_TENT * TENT_SPACING_X +
-      TENT_START_POS.x;
-    pos.y =
-      point.y / Game.PATHFINDING_GRID_PER_TENT * TENT_SPACING_Y +
-      TENT_START_POS.y;
+    pos.x = point.x / Game.PATH_GRID_MUL * TENT_SPACING_X + TENT_START_POS.x;
+    pos.y = point.y / Game.PATH_GRID_MUL * TENT_SPACING_Y + TENT_START_POS.y;
     return pos;
   }
 
   _spawnTents() {
-    for (var i = 0; i < TENTS_PER_ROW * TENT_ROWS; i++) {
-      const col = i % TENTS_PER_ROW;
-      const row = Math.floor(i / TENTS_PER_ROW);
+    for (var i = 0; i < TENT_COLS * TENT_ROWS; i++) {
+      const col = i % TENT_COLS;
+      const row = Math.floor(i / TENT_COLS);
 
       const randomnessInv = 6;
       const tent = new Tent();
@@ -421,27 +414,21 @@ class Game {
     }
 
     const pathfinding = [];
-    for (var i = 0; i < TENT_ROWS; i++) {
-      pathfinding[i * Game.PATHFINDING_GRID_PER_TENT] = [];
+    for (let i = 0; i < TENT_ROWS * Game.PATH_GRID_MUL; i++) {
+      pathfinding[i] = [];
 
-      pathfinding[i * Game.PATHFINDING_GRID_PER_TENT + 1] = [];
-      for (var k = 0; k < TENTS_PER_ROW; k++) {
-        pathfinding[i * Game.PATHFINDING_GRID_PER_TENT][
-          k * Game.PATHFINDING_GRID_PER_TENT
-        ] = 1;
-        pathfinding[i * Game.PATHFINDING_GRID_PER_TENT][
-          k * Game.PATHFINDING_GRID_PER_TENT + 1
-        ] = 0;
-        pathfinding[i * Game.PATHFINDING_GRID_PER_TENT + 1][
-          k * Game.PATHFINDING_GRID_PER_TENT
-        ] = 0;
-        pathfinding[i * Game.PATHFINDING_GRID_PER_TENT + 1][
-          k * Game.PATHFINDING_GRID_PER_TENT + 1
-        ] = 0;
+      for (let k = 0; k < TENT_COLS * Game.PATH_GRID_MUL; k++) {
+        pathfinding[i][k] =
+          i % Game.PATH_GRID_MUL < Game.PATH_GRID_TENT_SIZE &&
+          k % Game.PATH_GRID_MUL < Game.PATH_GRID_TENT_SIZE
+            ? 1
+            : 0;
       }
     }
+    console.log(pathfinding);
     this.easystar.setGrid(pathfinding);
     this.easystar.setAcceptableTiles([0]);
+    // this.easystar.enableDiagonals();
     this.easystar.enableSync();
   }
 
@@ -454,8 +441,8 @@ class Game {
   _spawnPowerups() {
     for (var i = 0; i < 4; i++) {
       const idx = i * 7; // skip
-      const col = idx % TENTS_PER_ROW;
-      const row = Math.floor(idx / TENTS_PER_ROW);
+      const col = idx % TENT_COLS;
+      const row = Math.floor(idx / TENT_COLS);
       const initPos = {
         x:
           TENT_START_POS.x +
