@@ -185,7 +185,7 @@ class FestivalGoer extends GameObject {
     this.isPathfinding = true;
     const start = game.toPathfindingCoords(this.pos);
     const end = game.toPathfindingCoords(target.pos);
-    end.y += 2;
+    end.y += Game.PATH_GRID_TENT_SIZE;
 
     game.easystar.findPath(start.x, start.y, end.x, end.y, gridPath => {
       this.isPathfinding = false;
@@ -193,7 +193,9 @@ class FestivalGoer extends GameObject {
         console.error('pathfinding failed', this, {start, end});
       } else {
         this.path = new Path(
-          gridPath.map(gridPoint => game.fromPathfindingCoords(gridPoint))
+          gridPath.length == 0
+            ? [target.pos]
+            : gridPath.map(gridPoint => game.fromPathfindingCoords(gridPoint))
         );
       }
     });
@@ -260,6 +262,7 @@ class FestivalGoer extends GameObject {
 class Player extends FestivalGoer {
   piss = 10;
   energy = 10;
+  score = 0;
   pos = new Vec2d({x: 300, y: 200});
   bboxStart = new Vec2d({x: 13, y: 18});
   bboxEnd = new Vec2d({x: 17, y: 23});
@@ -312,12 +315,14 @@ class Player extends FestivalGoer {
 
   doAttack(tent: Tent) {
     if (this.energy && tent.damage()) {
+      this.score += 100;
       this.energy--;
     }
   }
 
   doPiss(tent: Tent) {
     if (this.piss && tent.pissOn()) {
+      this.score += 100;
       this.piss--;
     }
   }
@@ -366,12 +371,12 @@ class Game {
   constructor() {
     this._spawnTents();
     this.worldObjects.push(this.player);
-    this._spawnPeople();
     this._spawnPowerups();
+    this._startSpawningPeople();
   }
 
-  static PATH_GRID_MUL = 4;
-  static PATH_GRID_TENT_SIZE = 2;
+  static PATH_GRID_MUL = 2;
+  static PATH_GRID_TENT_SIZE = 1;
 
   toPathfindingCoords(pos: Vec2d) {
     const x = Math.min(
@@ -428,14 +433,22 @@ class Game {
     console.log(pathfinding);
     this.easystar.setGrid(pathfinding);
     this.easystar.setAcceptableTiles([0]);
-    // this.easystar.enableDiagonals();
     this.easystar.enableSync();
   }
 
-  _spawnPeople() {
-    for (var i = 0; i < 10; i++) {
-      this.worldObjects.push(new FestivalGoer());
-    }
+  _spawnPerson() {
+    this.worldObjects.push(new FestivalGoer());
+  }
+
+  _startSpawningPeople() {
+    let population = 0;
+    const interval = setInterval(() => {
+      if (population++ > 20) {
+        clearInterval(interval);
+      }
+
+      this._spawnPerson();
+    }, 1000);
   }
 
   _spawnPowerups() {
@@ -492,6 +505,10 @@ class Game {
   }
 }
 
+function lerp(v0: number, v1: number, t: number) {
+  return (1 - t) * v0 + t * v1;
+}
+
 const FestivalGoerImage = (props: {person: FestivalGoer}) => {
   // TODO: move this to player class
   const facingRight = props.person.lastMove.x > 0;
@@ -535,6 +552,10 @@ const Hud = (props: {game: Game}) => {
           className="statbar"
           style={{background: '#f44', width: props.game.player.energy * 10}}
         />
+      </div>
+      <div>
+        <div className="statbarlabel">Score: </div>
+        {props.game.player.score}
       </div>
       <pre>
         {DEBUG &&
@@ -608,8 +629,11 @@ class App extends Component<{}, void> {
   _update() {
     this.game.update();
   }
+ 
   render() {
+    const {player} = this.game;
     const {target} = this.game.player;
+
     return (
       <div className="App">
         {this.game.worldObjects.map((obj, i) => {
@@ -637,6 +661,7 @@ class App extends Component<{}, void> {
             );
           }
         })}
+
         {target && (
           <div
             key="target"

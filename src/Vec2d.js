@@ -36,6 +36,12 @@ export default class Vec2d {
     return this;
   }
 
+  addScalar(scalar: number) {
+    this.x += scalar;
+    this.y += scalar;
+    return this;
+  }
+
   multiplyScalar(scalar: number) {
     this.x *= scalar;
     this.y *= scalar;
