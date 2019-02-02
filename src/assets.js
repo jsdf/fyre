@@ -1,7 +1,9 @@
+// @flow
+
 export default {
-  dssand2: require('./assets/dssand2dark.png'),
-  // dstent: require('./assets/dstent.png'),
-  dstent: require('./assets/dstentdark.png'),
+  dssand2dark: require('./assets/dssand2darkgrey1x.png'),
+  dssand2: require('./assets/dssand21x.png'),
+  dstent: require('./assets/dstent.png'),
   dstentdmg: require('./assets/dstentdmg.png'),
   cheese: require('./assets/cheese.png'),
   water: require('./assets/water2.png'),

@@ -13,6 +13,7 @@ const SCALE = 2;
 const DEBUG = false;
 const VIEWBOX_PADDING_X = 128;
 const VIEWBOX_PADDING_Y = 64;
+const DARK = false;
 
 const TENT_START_POS = new Vec2d({x: 20, y: 20});
 
@@ -23,6 +24,9 @@ function toScreenPx(px) {
 const getImage = (() => {
   const cache = new Map();
   return url => {
+    if (url == '') {
+      return;
+    }
     const cached = cache.get(url);
     if (cached) {
       return cached.image;
@@ -31,6 +35,9 @@ const getImage = (() => {
       const image = new Image();
       image.onload = () => {
         imageRef.image = image;
+      };
+      image.onerror = () => {
+        throw new Error(`failed to load ${url}`);
       };
       image.src = url;
       cache.set(url, imageRef);
@@ -626,11 +633,37 @@ const renderFestivalGoerImage = (
 
   if (DEBUG && person.target) {
     ctx.font = '10px monospace';
+    ctx.fillStyle = 'black';
     ctx.fillText(
       String(person.target.id),
       view.toScreenX(person.pos.x),
       view.toScreenY(person.pos.y)
     );
+  }
+};
+
+const renderTilesInView = (ctx: CanvasRenderingContext2D, view: View) => {
+  const image = getImage(DARK ? assets.dssand2dark : assets.dssand2);
+  if (!image) return;
+
+  const viewWidth = window.innerWidth / SCALE;
+  const viewHeight = window.innerHeight / SCALE;
+
+  const firstTileX = Math.floor(view.offset.x / image.width) * image.width;
+  const numTilesInViewX = viewWidth / image.width + 1;
+  const firstTileY = Math.floor(view.offset.y / image.height) * image.height;
+  const numTilesInViewY = viewHeight / image.height + 1;
+
+  for (let row = 0; row < numTilesInViewY; row++) {
+    for (let col = 0; col < numTilesInViewX; col++) {
+      ctx.drawImage(
+        image,
+        Math.floor(view.toScreenX(firstTileX + col * image.width)),
+        Math.floor(view.toScreenY(firstTileY + row * image.height)),
+        image.width,
+        image.height
+      );
+    }
   }
 };
 
@@ -652,6 +685,7 @@ const renderObjectImage = (
 
   if (DEBUG) {
     ctx.font = '10px monospace';
+    ctx.fillStyle = 'black';
     ctx.fillText(
       String(obj.id),
       view.toScreenX(obj.pos.x),
@@ -681,6 +715,7 @@ const renderTarget = (
     ? `smash ${target.damageTaken}/${Tent.MAX_DAMAGE}`
     : `piss on ${target.pissiness}/${Tent.MAX_PISSINESS}`;
   ctx.font = '10px monospace';
+  ctx.fillStyle = 'black';
 
   ctx.fillText(
     label,
@@ -801,7 +836,9 @@ class App extends Component<{}, void> {
     const canvas = this._canvas;
     if (canvas instanceof HTMLCanvasElement) {
       const ctx = canvas.getContext('2d');
+      ctx.globalCompositeOperation = 'source-over';
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      renderTilesInView(ctx, this.game.view);
       this.game.worldObjects.forEach((obj, i) => {
         if (!obj.enabled) {
           return;
@@ -810,12 +847,31 @@ class App extends Component<{}, void> {
           renderFestivalGoerImage(ctx, this.game.view, obj);
         } else if (obj instanceof FestivalGoer) {
           renderFestivalGoerImage(ctx, this.game.view, obj);
+        } else if (obj instanceof Powerup) {
+          return;
         } else {
           renderObjectImage(ctx, this.game.view, obj);
         }
       });
       const {target} = this.game.player;
 
+      if (DARK) {
+        // render tint
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillStyle = '#aac2eb';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalCompositeOperation = 'source-over';
+      }
+
+      // render powerups above tint
+      this.game.worldObjects.forEach((obj, i) => {
+        if (!obj.enabled) {
+          return;
+        }
+        if (obj instanceof Powerup) {
+          renderObjectImage(ctx, this.game.view, obj);
+        }
+      });
       if (target) {
         renderTarget(ctx, this.game.view, target, this.game);
       }
