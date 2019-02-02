@@ -11,11 +11,36 @@ const TENT_SPACING_X = 96;
 const TENT_SPACING_Y = 64;
 const SCALE = 2;
 const DEBUG = false;
+const VIEWBOX_PADDING_X = 128;
+const VIEWBOX_PADDING_Y = 64;
 
 const TENT_START_POS = new Vec2d({x: 20, y: 20});
 
 function toScreenPx(px) {
   return px * SCALE;
+}
+
+const getImage = (() => {
+  const cache = new Map();
+  return url => {
+    const cached = cache.get(url);
+    if (cached) {
+      return cached.image;
+    } else {
+      const imageRef: {image: ?Image} = {image: null};
+      const image = new Image();
+      image.onload = () => {
+        imageRef.image = image;
+      };
+      image.src = url;
+      cache.set(url, imageRef);
+    }
+    return null;
+  };
+})();
+
+function precacheImageAssets() {
+  Object.keys(assets).forEach(key => getImage(assets[key]));
 }
 
 type Direction = 'up' | 'down' | 'left' | 'right';
@@ -353,6 +378,32 @@ function collision(a: GameObject, b: GameObject) {
   return !(ax1 > bx2 || bx1 > ax2 || ay1 > by2 || by1 > ay2);
 }
 
+class View {
+  offset = new Vec2d();
+  toScreenX(x: number) {
+    return x - this.offset.x;
+  }
+  toScreenY(y: number) {
+    return y - this.offset.y;
+  }
+}
+
+function calculateViewAdjustment(
+  offset,
+  paddingSizeForDimension,
+  viewportSizeForDimension,
+  playerPosForDimension
+) {
+  const boxMinAbs = offset + paddingSizeForDimension;
+  const boxMaxAbs = offset + viewportSizeForDimension - paddingSizeForDimension;
+
+  const deltaMin = Math.min(playerPosForDimension - boxMinAbs, 0);
+  const deltaMax = -Math.min(boxMaxAbs - playerPosForDimension, 0);
+
+  const delta = deltaMin === 0 ? deltaMax : deltaMin;
+  return delta;
+}
+
 class Game {
   frame = 0;
   player = new Player();
@@ -365,6 +416,8 @@ class Game {
   };
 
   worldObjects = [];
+
+  view = new View();
 
   easystar = new EasyStar.js();
 
@@ -477,6 +530,38 @@ class Game {
       this.worldObjects[i].update(this);
     }
     this._detectCollisions();
+    this._updateViewOffset();
+  }
+
+  _updateViewOffset() {
+    /*
+        plr
+      box|
+   scr | |
+    |  | |   
+    v  v |   
+    |  | v   
+    |  | x   
+ 
+    boxAbs = scrOff+boxRel
+    if (plr - boxAbs < 0), scrOff -= plr - boxAbs
+     */
+
+    const viewWidth = window.innerWidth / SCALE;
+    const viewHeight = window.innerHeight / SCALE;
+
+    this.view.offset.x += calculateViewAdjustment(
+      this.view.offset.x,
+      VIEWBOX_PADDING_X,
+      viewWidth,
+      this.player.pos.x
+    );
+    this.view.offset.y += calculateViewAdjustment(
+      this.view.offset.y,
+      VIEWBOX_PADDING_Y,
+      viewHeight,
+      this.player.pos.y
+    );
   }
 
   _detectCollisions() {
@@ -509,29 +594,98 @@ function lerp(v0: number, v1: number, t: number) {
   return (1 - t) * v0 + t * v1;
 }
 
-const FestivalGoerImage = (props: {person: FestivalGoer}) => {
+const renderFestivalGoerImage = (
+  ctx: CanvasRenderingContext2D,
+  view: View,
+  person: FestivalGoer
+) => {
   // TODO: move this to player class
-  const facingRight = props.person.lastMove.x > 0;
+  const facingRight = person.lastMove.x > 0;
 
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        transform: `translate(${toScreenPx(props.person.pos.x)}px, ${toScreenPx(
-          props.person.pos.y
-        )}px) scale(${SCALE}) `,
-      }}
-    >
-      {DEBUG &&
-        props.person.target && (
-          <span className="objectdebug">{props.person.target.id}</span>
-        )}
-      <img
-        style={{transform: `scaleX(${facingRight ? -1 : 1})`}}
-        src={props.person.sprite}
-        className="sprite"
-      />
-    </div>
+  const image = getImage(person.sprite);
+  if (!image) return;
+
+  if (facingRight) {
+    ctx.save();
+    ctx.translate(
+      Math.floor(view.toScreenX(person.pos.x + image.width)),
+      Math.floor(view.toScreenY(person.pos.y))
+    );
+    ctx.scale(-1, 1);
+    ctx.drawImage(image, 0, 0);
+    ctx.restore();
+  } else {
+    ctx.drawImage(
+      image,
+      Math.floor(view.toScreenX(person.pos.x)),
+      Math.floor(view.toScreenY(person.pos.y)),
+      image.width,
+      image.height
+    );
+  }
+
+  if (DEBUG && person.target) {
+    ctx.font = '10px monospace';
+    ctx.fillText(
+      String(person.target.id),
+      view.toScreenX(person.pos.x),
+      view.toScreenY(person.pos.y)
+    );
+  }
+};
+
+const renderObjectImage = (
+  ctx: CanvasRenderingContext2D,
+  view: View,
+  obj: GameObject
+) => {
+  const image = getImage(obj.sprite);
+  if (!image) return;
+
+  ctx.drawImage(
+    image,
+    view.toScreenX(Math.floor(obj.pos.x)),
+    view.toScreenY(Math.floor(obj.pos.y)),
+    image.width,
+    image.height
+  );
+
+  if (DEBUG) {
+    ctx.font = '10px monospace';
+    ctx.fillText(
+      String(obj.id),
+      view.toScreenX(obj.pos.x),
+      view.toScreenY(obj.pos.y)
+    );
+  }
+};
+
+const renderTarget = (
+  ctx: CanvasRenderingContext2D,
+  view: View,
+  target: Tent,
+  game: Game
+) => {
+  const image = getImage(assets.target);
+  if (!image) return;
+
+  ctx.drawImage(
+    image,
+    Math.floor(view.toScreenX(target.pos.x)),
+    Math.floor(view.toScreenY(target.pos.y)),
+    image.width,
+    image.height
+  );
+
+  const label = game.player.withinAttackRange()
+    ? `smash ${target.damageTaken}/${Tent.MAX_DAMAGE}`
+    : `piss on ${target.pissiness}/${Tent.MAX_PISSINESS}`;
+  ctx.font = '10px monospace';
+
+  ctx.fillText(
+    label,
+    Math.floor(view.toScreenX(target.pos.x)),
+    Math.floor(view.toScreenY(target.pos.y)) - 4
   );
 };
 
@@ -580,14 +734,22 @@ const Hud = (props: {game: Game}) => {
 class App extends Component<{}, void> {
   game = new Game();
   componentDidMount() {
+    window.game = Game;
     document.addEventListener('keydown', (event: KeyboardEvent) =>
       this._handleKey(event, true)
     );
     document.addEventListener('keyup', (event: KeyboardEvent) =>
       this._handleKey(event, false)
     );
+    window.addEventListener('resize', () => this.forceUpdate());
 
+    this._renderCanvas();
     this._enqueueFrame();
+    precacheImageAssets();
+  }
+
+  componentDidUpdate() {
+    this._renderCanvas();
   }
 
   _handleKey(event: KeyboardEvent, pressed: boolean) {
@@ -622,64 +784,54 @@ class App extends Component<{}, void> {
     requestAnimationFrame(() => {
       this.game.frame++;
       this._update();
-      this.forceUpdate();
+      this._renderCanvas();
+      this.forceUpdate(); // TODO: remove this when hud doesn't need react
       this._enqueueFrame();
     });
   }
   _update() {
     this.game.update();
   }
- 
-  render() {
-    const {player} = this.game;
-    const {target} = this.game.player;
 
+  _canvas: ?HTMLCanvasElement = null;
+  _onCanvas = (canvas: ?HTMLCanvasElement) => {
+    this._canvas = canvas;
+  };
+  _renderCanvas() {
+    const canvas = this._canvas;
+    if (canvas instanceof HTMLCanvasElement) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      this.game.worldObjects.forEach((obj, i) => {
+        if (!obj.enabled) {
+          return;
+        }
+        if (obj instanceof Player) {
+          renderFestivalGoerImage(ctx, this.game.view, obj);
+        } else if (obj instanceof FestivalGoer) {
+          renderFestivalGoerImage(ctx, this.game.view, obj);
+        } else {
+          renderObjectImage(ctx, this.game.view, obj);
+        }
+      });
+      const {target} = this.game.player;
+
+      if (target) {
+        renderTarget(ctx, this.game.view, target, this.game);
+      }
+    }
+  }
+  render() {
     return (
       <div className="App">
-        {this.game.worldObjects.map((obj, i) => {
-          if (!obj.enabled) {
-            return <div key={`disabled${i}`} />;
-          }
-          if (obj instanceof Player) {
-            return <FestivalGoerImage person={obj} key={obj.id} />;
-          } else if (obj instanceof FestivalGoer) {
-            return <FestivalGoerImage person={obj} key={obj.id} />;
-          } else {
-            return (
-              <div
-                key={obj.id}
-                className="object"
-                style={{
-                  transform: `translate(${toScreenPx(
-                    obj.pos.x
-                  )}px, ${toScreenPx(obj.pos.y)}px) scale(${SCALE})`,
-                }}
-              >
-                <img src={obj.sprite} className="sprite" />
-                {DEBUG && <span className="objectdebug">{obj.id}</span>}
-              </div>
-            );
-          }
-        })}
+        <canvas
+          ref={this._onCanvas}
+          width={window.innerWidth / 2}
+          height={window.innerHeight / 2}
+          style={{transform: `scale(${SCALE})`, transformOrigin: 'top left'}}
+          className="sprite"
+        />
 
-        {target && (
-          <div
-            key="target"
-            className="object"
-            style={{
-              transform: `translate(${toScreenPx(target.pos.x)}px, ${toScreenPx(
-                target.pos.y
-              )}px) scale(${SCALE})`,
-            }}
-          >
-            <div className="targetinfo">
-              {this.game.player.withinAttackRange()
-                ? `smash ${target.damageTaken}/${Tent.MAX_DAMAGE}`
-                : `piss on ${target.pissiness}/${Tent.MAX_PISSINESS}`}
-            </div>
-            <img src={assets.target} className="sprite" />
-          </div>
-        )}
         <Hud game={this.game} />
       </div>
     );
