@@ -10,7 +10,11 @@ const TENT_COLS = 10;
 const TENT_SPACING_X = 96;
 const TENT_SPACING_Y = 64;
 const SCALE = 2;
-const DEBUG = false;
+const DEBUG_OBJECTS = false;
+const DEBUG_BBOX = false;
+const DEBUG_PLAYER = false;
+const DEBUG_PATHFINDING_GRID = false;
+const DEBUG_PATH_FOLLOWING = false;
 const VIEWBOX_PADDING_X = 128;
 const VIEWBOX_PADDING_Y = 64;
 const DARK = false;
@@ -85,7 +89,12 @@ class GameObject {
     return this.pos
       .clone()
       .add(this.bboxStart)
-      .add(this.bboxEnd.clone().divideScalar(2));
+      .add(
+        this.bboxEnd
+          .clone()
+          .sub(this.bboxStart)
+          .divideScalar(2)
+      );
   }
 }
 
@@ -93,8 +102,8 @@ class Tent extends GameObject {
   pissiness = 0;
   damageTaken = 0;
   sprite = assets.dstent;
-  bboxStart = new Vec2d({x: 3, y: 8});
-  bboxEnd = new Vec2d({x: 38, y: 33});
+  bboxStart = new Vec2d({x: 6, y: 11});
+  bboxEnd = new Vec2d({x: 40, y: 33});
   static MAX_DAMAGE = 3;
   static MAX_PISSINESS = 3;
 
@@ -134,8 +143,8 @@ class Powerup extends GameObject {
 
 class Water extends Powerup {
   sprite = assets.water;
-  bboxStart = new Vec2d({x: 14, y: 6});
-  bboxEnd = new Vec2d({x: 58, y: 57});
+  bboxStart = new Vec2d({x: 19, y: 15});
+  bboxEnd = new Vec2d({x: 46, y: 43});
   static VALUE = 3;
 
   pickedUp(player: Player) {
@@ -284,23 +293,17 @@ class FestivalGoer extends GameObject {
       if (!(path || this.isPathfinding)) {
         this.findPath(game, target);
       } else if (path) {
-        if (this.pos.distanceTo(path.getNextPoint()) < 1) {
+        if (this.getCenter().distanceTo(path.getNextPoint()) < 1) {
           path.advance();
         }
 
         if (!path.nextPointIsDestination()) {
-          playerMove.add(this.pos.directionTo(path.getNextPoint()));
+          playerMove.add(this.getCenter().directionTo(path.getNextPoint()));
         } else {
-          playerMove.add(this.pos.directionTo(target.pos));
+          playerMove.add(this.getCenter().directionTo(target.getCenter()));
         }
       }
     }
-
-    // DIRECTIONS.forEach(direction => {
-    //   if (Math.round(Math.random())) {
-    //     playerMove.add(DIRECTIONS_VECTORS[direction]);
-    //   }
-    // });
 
     if (playerMove.x !== 0 || playerMove.y !== 0) {
       playerMove = getMovementVelocity(playerMove, FestivalGoer.MOVEMENT_SPEED);
@@ -328,6 +331,29 @@ class FestivalGoer extends GameObject {
   }
 }
 
+class PlayerState {
+  update(player: Player): ?PlayerState {}
+}
+
+class IdleState extends PlayerState {}
+
+class PissingState extends PlayerState {
+  static DURATION = 1000;
+  startTime = Date.now();
+  target: Tent;
+
+  constructor(target: Tent) {
+    super();
+    this.target = target;
+  }
+
+  update(player: Player): ?PlayerState {
+    if (Date.now() > this.startTime + PissingState.DURATION) {
+      return new IdleState();
+    }
+  }
+}
+
 class Player extends FestivalGoer {
   piss = 10;
   energy = 10;
@@ -337,6 +363,7 @@ class Player extends FestivalGoer {
   bboxEnd = new Vec2d({x: 17, y: 23});
   stillSprite = assets.guystill;
   walkAnim = [assets.guywalkcycle1, assets.guywalkcycle2, assets.guywalkcycle3];
+  state: PlayerState = new IdleState();
   static MOVEMENT_SPEED = 2;
   static MAX_PISS = 10;
   static MAX_ENERGY = 10;
@@ -379,6 +406,11 @@ class Player extends FestivalGoer {
       }
     }
 
+    const nextState = this.state.update(this);
+    if (nextState) {
+      this.state = nextState;
+    }
+
     this.animUpdate(game);
   }
 
@@ -393,6 +425,7 @@ class Player extends FestivalGoer {
     if (this.piss && tent.pissOn()) {
       this.score += 100;
       this.piss--;
+      this.state = new PissingState(tent);
     }
   }
 }
@@ -464,6 +497,7 @@ class Game {
   view = new View();
 
   easystar = new EasyStar.js();
+  pathfindingGrid: ?Array<Array<number>> = null;
 
   constructor() {
     this._spawnTents();
@@ -492,8 +526,10 @@ class Game {
   }
   fromPathfindingCoords(point: {x: number, y: number}) {
     const pos = new Vec2d();
-    pos.x = point.x / Game.PATH_GRID_MUL * TENT_SPACING_X + TENT_START_POS.x;
-    pos.y = point.y / Game.PATH_GRID_MUL * TENT_SPACING_Y + TENT_START_POS.y;
+    const gridItemWidth = TENT_SPACING_X / Game.PATH_GRID_MUL;
+    const gridItemHeight = TENT_SPACING_Y / Game.PATH_GRID_MUL;
+    pos.x = TENT_START_POS.x + (point.x + 0.5) * gridItemWidth;
+    pos.y = TENT_START_POS.y + (point.y + 0.5) * gridItemHeight;
     return pos;
   }
 
@@ -527,7 +563,7 @@ class Game {
             : 0;
       }
     }
-    console.log(pathfinding);
+    this.pathfindingGrid = pathfinding;
     this.easystar.setGrid(pathfinding);
     this.easystar.setAcceptableTiles([0]);
     this.easystar.enableSync();
@@ -638,6 +674,62 @@ function lerp(v0: number, v1: number, t: number) {
   return (1 - t) * v0 + t * v1;
 }
 
+const renderBBox = (
+  ctx: CanvasRenderingContext2D,
+  view: View,
+  obj: GameObject
+) => {
+  if (DEBUG_BBOX) {
+    ctx.strokeStyle = 'red';
+
+    const x = Math.floor(view.toScreenX(obj.pos.x + obj.bboxStart.x));
+    const y = Math.floor(view.toScreenY(obj.pos.y + obj.bboxStart.y));
+    const width = Math.floor(obj.bboxEnd.x - obj.bboxStart.x);
+    const height = Math.floor(obj.bboxEnd.y - obj.bboxStart.y);
+    ctx.strokeRect(x, y, width, height);
+  }
+};
+
+const renderPoint = (
+  ctx: CanvasRenderingContext2D,
+  view: View,
+  pos: Vec2d,
+  color: string
+) => {
+  ctx.fillStyle = color;
+
+  const x = Math.floor(view.toScreenX(pos.x - 2));
+  const y = Math.floor(view.toScreenY(pos.y - 2));
+  const width = 4;
+  const height = 4;
+  ctx.fillRect(x, y, width, height);
+};
+
+const renderPathfindingGrid = (
+  ctx: CanvasRenderingContext2D,
+  view: View,
+  game: Game
+) => {
+  if (DEBUG_PATHFINDING_GRID) {
+    if (!game.pathfindingGrid) return;
+    const grid = game.pathfindingGrid;
+
+    const width = Math.floor(TENT_SPACING_X / Game.PATH_GRID_MUL);
+    const height = Math.floor(TENT_SPACING_Y / Game.PATH_GRID_MUL);
+    for (let row = 0; row < grid.length; row++) {
+      for (let col = 0; col < grid[row].length; col++) {
+        const pos = game.fromPathfindingCoords({x: col, y: row});
+        const {x, y} = pos;
+
+        const isBlocked = grid[row][col] == 1;
+
+        const color = isBlocked ? 'red' : 'green';
+        renderPoint(ctx, view, pos, color);
+      }
+    }
+  }
+};
+
 const renderFestivalGoerImage = (
   ctx: CanvasRenderingContext2D,
   view: View,
@@ -650,9 +742,13 @@ const renderFestivalGoerImage = (
   if (!image) return;
 
   if (facingRight) {
+    // hack to fix misaligned reversed sprite
+    const rightFacingOffset = -1;
     ctx.save();
     ctx.translate(
-      Math.floor(view.toScreenX(person.pos.x + image.width)),
+      Math.floor(
+        view.toScreenX(person.pos.x + image.width + rightFacingOffset)
+      ),
       Math.floor(view.toScreenY(person.pos.y))
     );
     ctx.scale(-1, 1);
@@ -678,7 +774,7 @@ const renderFestivalGoerImage = (
     );
   }
 
-  if (DEBUG && person.target) {
+  if (DEBUG_OBJECTS && person.target) {
     ctx.font = '10px monospace';
     ctx.fillStyle = 'black';
     ctx.fillText(
@@ -687,6 +783,8 @@ const renderFestivalGoerImage = (
       view.toScreenY(person.pos.y)
     );
   }
+
+  renderBBox(ctx, view, person);
 };
 
 const renderTilesInView = (ctx: CanvasRenderingContext2D, view: View) => {
@@ -714,6 +812,40 @@ const renderTilesInView = (ctx: CanvasRenderingContext2D, view: View) => {
   }
 };
 
+const renderPissStream = (
+  ctx: CanvasRenderingContext2D,
+  view: View,
+  from: Vec2d,
+  to: Vec2d
+) => {
+  ctx.strokeStyle = 'yellow';
+  ctx.beginPath();
+  ctx.moveTo(view.toScreenX(from.x), view.toScreenY(from.y));
+  // ctx.lineTo(view.toScreenX(to.x), view.toScreenY(to.y));
+  ctx.bezierCurveTo(
+    view.toScreenX(from.x + (to.x - from.x) * 0.25),
+    view.toScreenY(from.y - 20),
+    view.toScreenX(to.x),
+    view.toScreenY(to.y - 20),
+    view.toScreenX(to.x),
+    view.toScreenY(to.y)
+  );
+  ctx.stroke();
+
+  // splashes
+  ctx.strokeStyle = 'white';
+
+  for (var i = 0; i < 4; i++) {
+    ctx.beginPath();
+    ctx.moveTo(view.toScreenX(to.x), view.toScreenY(to.y));
+    ctx.lineTo(
+      Math.floor(view.toScreenX(to.x + (Math.random() * 10 - 5))),
+      Math.floor(view.toScreenY(to.y + (Math.random() * 10 - 5)))
+    );
+    ctx.stroke();
+  }
+};
+
 const renderObjectImage = (
   ctx: CanvasRenderingContext2D,
   view: View,
@@ -730,7 +862,7 @@ const renderObjectImage = (
     image.height
   );
 
-  if (DEBUG) {
+  if (DEBUG_OBJECTS) {
     ctx.font = '10px monospace';
     ctx.fillStyle = 'black';
     ctx.fillText(
@@ -739,6 +871,8 @@ const renderObjectImage = (
       view.toScreenY(obj.pos.y)
     );
   }
+
+  renderBBox(ctx, view, obj);
 };
 
 const renderTarget = (
@@ -749,11 +883,12 @@ const renderTarget = (
 ) => {
   const image = getImage(assets.target);
   if (!image) return;
+  const targetCenter = target.getCenter();
 
   ctx.drawImage(
     image,
-    Math.floor(view.toScreenX(target.pos.x)),
-    Math.floor(view.toScreenY(target.pos.y)),
+    Math.floor(view.toScreenX(targetCenter.x)) - image.width / 2,
+    Math.floor(view.toScreenY(targetCenter.y)) - image.height / 2,
     image.width,
     image.height
   );
@@ -766,8 +901,9 @@ const renderTarget = (
 
   ctx.fillText(
     label,
-    Math.floor(view.toScreenX(target.pos.x)),
-    Math.floor(view.toScreenY(target.pos.y)) - 4
+    Math.floor(view.toScreenX(targetCenter.x)) -
+      ctx.measureText(label).width / 2,
+    Math.floor(view.toScreenY(target.pos.y))
   );
 };
 
@@ -794,9 +930,12 @@ const Hud = (props: {game: Game}) => {
         {props.game.player.score}
       </div>
       <pre>
-        {DEBUG &&
+        {DEBUG_PLAYER &&
           JSON.stringify(
             {
+              player: {
+                state: props.game.player.state.constructor.name,
+              },
               target: target && {
                 id: target.id,
                 distanceTo: props.game.player
@@ -816,7 +955,7 @@ const Hud = (props: {game: Game}) => {
 class App extends Component<{}, void> {
   game = new Game();
   componentDidMount() {
-    window.game = Game;
+    window.game = this.game;
     document.addEventListener('keydown', (event: KeyboardEvent) =>
       this._handleKey(event, true)
     );
@@ -910,15 +1049,39 @@ class App extends Component<{}, void> {
         ctx.globalCompositeOperation = 'source-over';
       }
 
-      // render powerups above tint
+      // render stuff above tint
+      renderPathfindingGrid(ctx, this.game.view, this.game);
       this.game.worldObjects.forEach((obj, i) => {
         if (!obj.enabled) {
           return;
         }
         if (obj instanceof Powerup) {
           renderObjectImage(ctx, this.game.view, obj);
+        } else if (obj instanceof FestivalGoer) {
+          if (DEBUG_PATH_FOLLOWING) {
+            const {path} = obj;
+            if (path) {
+              const dest = path.getNextPoint();
+              if (dest) {
+                renderPoint(ctx, this.game.view, dest, 'blue');
+
+                renderPissStream(ctx, this.game.view, obj.getCenter(), dest);
+              }
+            }
+          }
         }
       });
+
+      const playerState = this.game.player.state;
+
+      if (playerState instanceof PissingState) {
+        renderPissStream(
+          ctx,
+          this.game.view,
+          this.game.player.getCenter().add(new Vec2d({x: 0, y: -4})),
+          playerState.target.getCenter()
+        );
+      }
       if (target) {
         renderTarget(ctx, this.game.view, target, this.game);
       }
