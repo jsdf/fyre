@@ -5,16 +5,19 @@ import React, {Component} from 'react';
 import Vec2d from './Vec2d';
 import EasyStar from 'easystarjs';
 
-const TENT_ROWS = 6;
-const TENT_COLS = 10;
+const TENT_ROWS = 4;
+const TENT_COLS = 4;
 const TENT_SPACING_X = 96;
 const TENT_SPACING_Y = 64;
 const SCALE = 2;
-const DEBUG_OBJECTS = false;
+const DEBUG_OBJECTS = true;
+const DEBUG_AI_TARGETS = true;
 const DEBUG_BBOX = false;
-const DEBUG_PLAYER = false;
-const DEBUG_PATHFINDING_GRID = false;
-const DEBUG_PATH_FOLLOWING = false;
+const DEBUG_PLAYER = true;
+const DEBUG_PATHFINDING_NODES = false;
+const DEBUG_PATHFINDING_BBOXES = false;
+const DEBUG_PATH_FOLLOWING = true;
+const DEBUG_PATH_FOLLOWING_STUCK = true;
 const VIEWBOX_PADDING_X = 128;
 const VIEWBOX_PADDING_Y = 64;
 const DARK = false;
@@ -101,11 +104,12 @@ class GameObject {
 class Tent extends GameObject {
   pissiness = 0;
   damageTaken = 0;
+  occupied = false;
   sprite = assets.dstent;
   bboxStart = new Vec2d({x: 6, y: 11});
   bboxEnd = new Vec2d({x: 40, y: 33});
-  static MAX_DAMAGE = 3;
-  static MAX_PISSINESS = 3;
+  static MAX_DAMAGE = 1;
+  static MAX_PISSINESS = 1;
 
   damage() {
     if (this.damageTaken < Tent.MAX_DAMAGE) {
@@ -127,7 +131,9 @@ class Tent extends GameObject {
 
   isUsable() {
     return (
-      this.pissiness < Tent.MAX_PISSINESS && this.damageTaken < Tent.MAX_DAMAGE
+      this.pissiness < Tent.MAX_PISSINESS &&
+      this.damageTaken < Tent.MAX_DAMAGE &&
+      !this.occupied
     );
   }
 }
@@ -203,6 +209,7 @@ class FestivalGoer extends GameObject {
   isPathfinding = false;
   target: ?Tent = null;
   path: ?Path = null;
+  stuck = false;
   static MOVEMENT_SPEED = 1;
   stillSprite = assets.personstill;
   walkAnim = [
@@ -222,6 +229,16 @@ class FestivalGoer extends GameObject {
   static DIALOG_VISIBLE_TIME = 3000;
   static DIALOG_CHANCE = 10000;
 
+  enterTent(tent: Tent) {
+    if (tent.occupied) {
+      // give up on this one, find another
+      this.clearTarget();
+    } else {
+      this.enabled = false;
+      tent.occupied = true;
+    }
+  }
+
   tryAcquireTarget(game: Game) {
     const tents = typeFilter(game.worldObjects, Tent);
 
@@ -232,25 +249,126 @@ class FestivalGoer extends GameObject {
     }
   }
 
-  findPath(game: Game, target: Tent) {
-    this.isPathfinding = true;
-    const start = game.toPathfindingCoords(this.pos);
-    const end = game.toPathfindingCoords(target.pos);
-    end.y += Game.PATH_GRID_TENT_SIZE;
-
-    game.easystar.findPath(start.x, start.y, end.x, end.y, gridPath => {
-      this.isPathfinding = false;
-      if (gridPath === null) {
-        console.error('pathfinding failed', this, {start, end});
-      } else {
-        this.path = new Path(
-          gridPath.length == 0
-            ? [target.pos]
-            : gridPath.map(gridPoint => game.fromPathfindingCoords(gridPoint))
-        );
+  findNearestWalkableTile(
+    game: Game,
+    target: {x: number, y: number},
+    searchRadius: number
+  ) {
+    const {pathfindingGrid} = game;
+    if (pathfindingGrid == null) {
+      console.error('pathfindingGrid not initialized');
+      return;
+    }
+    // find nearest walkable tile
+    const candidates = [];
+    for (let rowRel = -1 * searchRadius; rowRel < searchRadius; rowRel++) {
+      for (let colRel = -1 * searchRadius; colRel < searchRadius; colRel++) {
+        const pathfindingPos = {x: target.x + colRel, y: target.y + rowRel};
+        const gamePos = game.fromPathfindingCoords(pathfindingPos);
+        const pathfindingPosClamped = game.toPathfindingCoords(gamePos);
+        candidates.push({
+          pathfindingPos,
+          distance: this.getCenter().distanceTo(
+            game.fromPathfindingCoords(pathfindingPos)
+          ),
+          walkable:
+            pathfindingGrid[pathfindingPosClamped.y][
+              pathfindingPosClamped.x
+            ] === 0,
+        });
       }
-    });
+    }
+
+    const bestCandidates = candidates
+      .filter(c => c.walkable)
+      .sort((a, b) => a.distance - b.distance);
+
+    if (bestCandidates.length > 0) {
+      return bestCandidates[0].pathfindingPos;
+    }
+    return null;
+  }
+
+  findPath(game: Game, target: Tent) {
+    const startTime = performance.now();
+    this.isPathfinding = true;
+    let start = game.toPathfindingCoords(this.getCenter());
+    let end = game.toPathfindingCoords(target.getCenter());
+    // end.y += Game.PATH_GRID_TENT_SIZE;
+
+    const {pathfindingGrid} = game;
+    if (pathfindingGrid == null) {
+      console.error('pathfindingGrid not initialized');
+      return;
+    }
+
+    const searchRadius = Math.floor(Game.PATH_GRID_TENT_SIZE / 2) + 1;
+
+    if (pathfindingGrid[start.y][start.x] !== 0) {
+      const improvedStart = this.findNearestWalkableTile(
+        game,
+        start,
+        searchRadius
+      );
+      if (improvedStart) {
+        start = improvedStart;
+      }
+    }
+    if (pathfindingGrid[end.y][end.x] !== 0) {
+      const improvedEnd = this.findNearestWalkableTile(game, end, searchRadius);
+      if (improvedEnd) {
+        end = improvedEnd;
+      }
+    }
+
+    if (pathfindingGrid[start.y][start.x] !== 0) {
+      console.error('pathfinding: start is unwalkable');
+      return;
+    }
+    if (pathfindingGrid[end.y][end.x] !== 0) {
+      console.error('pathfinding: end is unwalkable');
+      return;
+    }
+
+    try {
+      game.easystar.findPath(start.x, start.y, end.x, end.y, gridPath => {
+        if (gridPath === null) {
+          console.error('pathfinding failed', this, {start, end});
+        } else {
+          if (gridPath.length == 0) {
+            console.error('pathfinding failed: empty', this, {start, end});
+          } else {
+            this.path = new Path(
+              gridPath.length == 0
+                ? [target.pos]
+                : gridPath.map(gridPoint =>
+                    game.fromPathfindingCoords(gridPoint)
+                  )
+            );
+
+            if (this.pos.distanceTo(this.path.getNextPoint()) > 100) {
+              console.error(
+                'garbage pathfinding result',
+                this,
+                {start, end},
+                this.path
+              );
+              this.path = null;
+            } else {
+              this.isPathfinding = false;
+            }
+          }
+        }
+      });
+    } catch (err) {
+      console.error('pathfinding error', err, this, {start, end});
+    }
+
     game.easystar.calculate();
+
+    console.log(
+      `pathfinding took ${(performance.now() - startTime).toFixed(2)}ms`
+    );
   }
 
   activeDialog: ?{text: string, startTime: number} = null;
@@ -278,7 +396,13 @@ class FestivalGoer extends GameObject {
     }
   }
 
+  clearTarget() {
+    this.target = null;
+    this.path = null;
+  }
+
   update(game: Game) {
+    this.stuck = false;
     if (!this.target) {
       this.tryAcquireTarget(game);
     }
@@ -333,6 +457,10 @@ class FestivalGoer extends GameObject {
 
 class PlayerState {
   update(player: Player): ?PlayerState {}
+
+  serialize() {
+    return `${this.constructor.name} {}`;
+  }
 }
 
 class IdleState extends PlayerState {}
@@ -352,11 +480,15 @@ class PissingState extends PlayerState {
       return new IdleState();
     }
   }
+
+  serialize() {
+    return `${this.constructor.name} { target: ${this.target.id} }`;
+  }
 }
 
 class Player extends FestivalGoer {
-  piss = 10;
-  energy = 10;
+  piss = 3;
+  energy = 3;
   score = 0;
   pos = new Vec2d({x: 300, y: 200});
   bboxStart = new Vec2d({x: 13, y: 18});
@@ -367,11 +499,16 @@ class Player extends FestivalGoer {
   static MOVEMENT_SPEED = 2;
   static MAX_PISS = 10;
   static MAX_ENERGY = 10;
+  static MAX_PISS_DISTANCE = 100;
+  static MAX_ATTACK_DISTANCE = 30;
 
-  withinAttackRange() {
-    return (
-      this.target && this.pos.distanceTo(this.target.pos) < 30
-    ); /*close to tent*/
+  withinAttackRange(tent: Tent) {
+    // are we close to a tent?
+    return this.pos.distanceTo(tent.pos) < Player.MAX_ATTACK_DISTANCE;
+  }
+
+  withinPissRange(tent: Tent) {
+    return this.pos.distanceTo(tent.pos) < Player.MAX_PISS_DISTANCE;
   }
 
   update(game: Game) {
@@ -392,14 +529,14 @@ class Player extends FestivalGoer {
     }
 
     // find target
-    const tentsByDistance = typeFilter(game.worldObjects, Tent).sort(
-      (a, b) => a.pos.distanceTo(this.pos) - b.pos.distanceTo(this.pos)
-    );
-    const target = tentsByDistance[0];
+    const tentsByDistance = typeFilter(game.worldObjects, Tent)
+      .filter(t => t.isUsable() && this.withinPissRange(t))
+      .sort((a, b) => a.pos.distanceTo(this.pos) - b.pos.distanceTo(this.pos));
+    const target = tentsByDistance.length ? tentsByDistance[0] : null;
     this.target = target;
 
-    if (game.keys.attack) {
-      if (this.withinAttackRange()) {
+    if (game.keys.attack && target && this.state instanceof IdleState) {
+      if (this.withinAttackRange(target)) {
         this.doAttack(target);
       } else {
         this.doPiss(target);
@@ -481,6 +618,10 @@ function calculateViewAdjustment(
   return delta;
 }
 
+function clamp(x, min, max) {
+  return Math.max(Math.min(x, max), min);
+}
+
 class Game {
   frame = 0;
   player = new Player();
@@ -506,21 +647,32 @@ class Game {
     this._startSpawningPeople();
   }
 
-  static PATH_GRID_MUL = 2;
-  static PATH_GRID_TENT_SIZE = 1;
+  static PATH_GRID_MUL = 5;
+  static PATH_GRID_TENT_SIZE = 3;
+  static PATH_TENT_OFFSET = TENT_START_POS.clone().add(
+    new Vec2d({
+      x: 0, //TENT_SPACING_X / Game.PATH_GRID_MUL / 2,
+      y: TENT_SPACING_Y / Game.PATH_GRID_MUL / 2,
+    })
+  );
+  // static PATH_TENT_OFFSET = TENT_START_POS;
 
   toPathfindingCoords(pos: Vec2d) {
-    const x = Math.min(
+    const x = clamp(
       Math.floor(
-        (pos.x - TENT_START_POS.x) / TENT_SPACING_X * Game.PATH_GRID_MUL
+        (pos.x - Game.PATH_TENT_OFFSET.x) /
+          (TENT_SPACING_X / Game.PATH_GRID_MUL)
       ),
-      TENT_COLS * Game.PATH_GRID_MUL
+      0,
+      TENT_COLS * Game.PATH_GRID_MUL - 1
     );
-    const y = Math.min(
+    const y = clamp(
       Math.floor(
-        (pos.y - TENT_START_POS.y) / TENT_SPACING_Y * Game.PATH_GRID_MUL
+        (pos.y - Game.PATH_TENT_OFFSET.y) /
+          (TENT_SPACING_Y / Game.PATH_GRID_MUL)
       ),
-      TENT_ROWS * Game.PATH_GRID_MUL
+      0,
+      TENT_ROWS * Game.PATH_GRID_MUL - 1
     );
     return {x, y};
   }
@@ -528,8 +680,8 @@ class Game {
     const pos = new Vec2d();
     const gridItemWidth = TENT_SPACING_X / Game.PATH_GRID_MUL;
     const gridItemHeight = TENT_SPACING_Y / Game.PATH_GRID_MUL;
-    pos.x = TENT_START_POS.x + (point.x + 0.5) * gridItemWidth;
-    pos.y = TENT_START_POS.y + (point.y + 0.5) * gridItemHeight;
+    pos.x = Game.PATH_TENT_OFFSET.x + (point.x + 0.5) * gridItemWidth;
+    pos.y = Game.PATH_TENT_OFFSET.y + (point.y + 0.5) * gridItemHeight;
     return pos;
   }
 
@@ -566,6 +718,8 @@ class Game {
     this.pathfindingGrid = pathfinding;
     this.easystar.setGrid(pathfinding);
     this.easystar.setAcceptableTiles([0]);
+    this.easystar.enableDiagonals();
+
     this.easystar.enableSync();
   }
 
@@ -581,7 +735,7 @@ class Game {
       }
 
       this._spawnPerson();
-    }, 1000);
+    }, 5000);
   }
 
   _spawnPowerups() {
@@ -660,8 +814,18 @@ class Game {
 
   _handleCollision(object: GameObject, otherObject: GameObject) {
     if (!otherObject.enabled) return;
+    // prevent penetration of solid objects
     if (object instanceof FestivalGoer && otherObject instanceof Tent) {
       object.pos.sub(object.lastMove);
+      if (
+        !(object instanceof Player) &&
+        object.target &&
+        object.target === otherObject
+      ) {
+        object.enterTent(otherObject);
+      } else {
+        object.stuck = true;
+      }
     }
 
     if (object instanceof Player && otherObject instanceof Powerup) {
@@ -710,7 +874,7 @@ const renderPathfindingGrid = (
   view: View,
   game: Game
 ) => {
-  if (DEBUG_PATHFINDING_GRID) {
+  if (DEBUG_PATHFINDING_NODES || DEBUG_PATHFINDING_BBOXES) {
     if (!game.pathfindingGrid) return;
     const grid = game.pathfindingGrid;
 
@@ -724,7 +888,19 @@ const renderPathfindingGrid = (
         const isBlocked = grid[row][col] == 1;
 
         const color = isBlocked ? 'red' : 'green';
-        renderPoint(ctx, view, pos, color);
+        if (DEBUG_PATHFINDING_NODES) {
+          renderPoint(ctx, view, pos, color);
+        }
+        if (DEBUG_PATHFINDING_BBOXES) {
+          ctx.strokeStyle = color;
+
+          ctx.strokeRect(
+            Math.floor(view.toScreenX(x - width / 2)),
+            Math.floor(view.toScreenY(y - height / 2)),
+            width,
+            height
+          );
+        }
       }
     }
   }
@@ -774,11 +950,28 @@ const renderFestivalGoerImage = (
     );
   }
 
-  if (DEBUG_OBJECTS && person.target) {
+  const {target} = person;
+
+  if (DEBUG_AI_TARGETS && target) {
+    ctx.font = '10px monospace';
+    ctx.fillStyle = 'black';
+    ctx.strokeStyle = 'white';
+    ctx.strokeText(
+      `t=${target.id}`,
+      view.toScreenX(person.pos.x + 20),
+      view.toScreenY(person.pos.y)
+    );
+    ctx.fillText(
+      `t=${target.id}`,
+      view.toScreenX(person.pos.x + 20),
+      view.toScreenY(person.pos.y)
+    );
+  }
+  if (DEBUG_OBJECTS) {
     ctx.font = '10px monospace';
     ctx.fillStyle = 'black';
     ctx.fillText(
-      String(person.target.id),
+      String(person.id),
       view.toScreenX(person.pos.x),
       view.toScreenY(person.pos.y)
     );
@@ -875,6 +1068,38 @@ const renderObjectImage = (
   renderBBox(ctx, view, obj);
 };
 
+const renderLabel = (
+  ctx: CanvasRenderingContext2D,
+  view: View,
+  obj: GameObject,
+  text: string,
+  color: string,
+  yOffset: number
+) => {
+  ctx.font = '10px monospace';
+  ctx.fillStyle = color;
+
+  const label = text;
+  const tentCenter = obj.getCenter();
+  const labelMetrics = ctx.measureText(label);
+
+  ctx.fillText(
+    label,
+    Math.floor(view.toScreenX(tentCenter.x) - labelMetrics.width / 2),
+    Math.floor(view.toScreenY(tentCenter.y) + yOffset)
+  );
+};
+
+const renderTent = (ctx: CanvasRenderingContext2D, view: View, tent: Tent) => {
+  renderObjectImage(ctx, view, tent);
+
+  if (tent.occupied) {
+    renderLabel(ctx, view, tent, 'occupied', 'red', -5);
+  } else if (tent.pissiness >= Tent.MAX_PISSINESS) {
+    renderLabel(ctx, view, tent, 'pissy', 'blue', -5);
+  }
+};
+
 const renderTarget = (
   ctx: CanvasRenderingContext2D,
   view: View,
@@ -893,9 +1118,10 @@ const renderTarget = (
     image.height
   );
 
-  const label = game.player.withinAttackRange()
-    ? `smash ${target.damageTaken}/${Tent.MAX_DAMAGE}`
-    : `piss on ${target.pissiness}/${Tent.MAX_PISSINESS}`;
+  const label =
+    game.player.target && game.player.withinAttackRange(game.player.target)
+      ? `smash ${target.damageTaken}/${Tent.MAX_DAMAGE}`
+      : `piss on ${target.pissiness}/${Tent.MAX_PISSINESS}`;
   ctx.font = '10px monospace';
   ctx.fillStyle = 'black';
 
@@ -934,7 +1160,7 @@ const Hud = (props: {game: Game}) => {
           JSON.stringify(
             {
               player: {
-                state: props.game.player.state.constructor.name,
+                state: props.game.player.state.serialize(),
               },
               target: target && {
                 id: target.id,
@@ -1035,6 +1261,8 @@ class App extends Component<{}, void> {
           renderFestivalGoerImage(ctx, this.game.view, obj);
         } else if (obj instanceof Powerup) {
           return;
+        } else if (obj instanceof Tent) {
+          renderTent(ctx, this.game.view, obj);
         } else {
           renderObjectImage(ctx, this.game.view, obj);
         }
@@ -1058,7 +1286,20 @@ class App extends Component<{}, void> {
         if (obj instanceof Powerup) {
           renderObjectImage(ctx, this.game.view, obj);
         } else if (obj instanceof FestivalGoer) {
-          if (DEBUG_PATH_FOLLOWING) {
+          if (DEBUG_PATH_FOLLOWING_STUCK && obj.stuck) {
+            const {path} = obj;
+            if (path) {
+              let lastPoint = obj.getCenter();
+              for (var i = 0; i < path.points.length; i++) {
+                const dest = path.points[i];
+
+                renderPoint(ctx, this.game.view, dest, 'blue');
+
+                renderPissStream(ctx, this.game.view, lastPoint, dest);
+                lastPoint = path.points[i];
+              }
+            }
+          } else if (DEBUG_PATH_FOLLOWING) {
             const {path} = obj;
             if (path) {
               const dest = path.getNextPoint();
