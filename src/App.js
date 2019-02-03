@@ -203,6 +203,16 @@ class FestivalGoer extends GameObject {
   ];
   static FRAMES_PER_ANIM_FRAME = 3;
 
+  static DIALOG = [
+    'Where can I charge my drone?',
+    "I'm shooting video in both horizontal & vertical formats",
+    "They're not EarPods, they're AirPods",
+    'I quit my job to come to this',
+  ];
+
+  static DIALOG_VISIBLE_TIME = 3000;
+  static DIALOG_CHANCE = 10000;
+
   tryAcquireTarget(game: Game) {
     const tents = typeFilter(game.worldObjects, Tent);
 
@@ -234,10 +244,37 @@ class FestivalGoer extends GameObject {
     game.easystar.calculate();
   }
 
+  activeDialog: ?{text: string, startTime: number} = null;
+
+  updateDialog() {
+    if (this.activeDialog) {
+      // clear expired dialog
+      const {startTime} = this.activeDialog;
+      if (Date.now() > startTime + FestivalGoer.DIALOG_VISIBLE_TIME) {
+        this.activeDialog = null;
+      }
+    }
+
+    if (!this.activeDialog) {
+      // maybe say new dialog
+      if (Math.floor(Math.random() * FestivalGoer.DIALOG_CHANCE) === 0) {
+        this.activeDialog = {
+          text:
+            FestivalGoer.DIALOG[
+              Math.floor(Math.random() * FestivalGoer.DIALOG.length)
+            ],
+          startTime: Date.now(),
+        };
+      }
+    }
+  }
+
   update(game: Game) {
     if (!this.target) {
       this.tryAcquireTarget(game);
     }
+
+    this.updateDialog();
 
     let playerMove = new Vec2d();
     const path = this.path;
@@ -628,6 +665,16 @@ const renderFestivalGoerImage = (
       Math.floor(view.toScreenY(person.pos.y)),
       image.width,
       image.height
+    );
+  }
+
+  if (person.activeDialog) {
+    ctx.font = '10px monospace';
+    ctx.fillStyle = 'black';
+    ctx.fillText(
+      person.activeDialog.text,
+      view.toScreenX(person.pos.x),
+      view.toScreenY(person.pos.y)
     );
   }
 
