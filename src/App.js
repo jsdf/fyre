@@ -10,13 +10,13 @@ const TENT_COLS = 4;
 const TENT_SPACING_X = 96;
 const TENT_SPACING_Y = 64;
 const SCALE = 2;
-const DEBUG_OBJECTS = true;
-const DEBUG_AI_TARGETS = true;
+const DEBUG_OBJECTS = false;
+const DEBUG_AI_TARGETS = false;
 const DEBUG_BBOX = false;
-const DEBUG_PLAYER = true;
+const DEBUG_PLAYER = false;
 const DEBUG_PATHFINDING_NODES = false;
 const DEBUG_PATHFINDING_BBOXES = false;
-const DEBUG_PATH_FOLLOWING = true;
+const DEBUG_PATH_FOLLOWING = false;
 const DEBUG_PATH_FOLLOWING_STUCK = true;
 const VIEWBOX_PADDING_X = 128;
 const VIEWBOX_PADDING_Y = 64;
@@ -111,12 +111,16 @@ class Tent extends GameObject {
   static MAX_DAMAGE = 1;
   static MAX_PISSINESS = 1;
 
-  damage() {
+  doDamage() {
     if (this.damageTaken < Tent.MAX_DAMAGE) {
       this.damageTaken++;
       if (this.damageTaken === Tent.MAX_DAMAGE) {
         this.sprite = assets.dstentdmg;
       }
+    }
+  }
+  canDamage() {
+    if (this.damageTaken < Tent.MAX_DAMAGE) {
       return true;
     }
     return false;
@@ -193,7 +197,9 @@ class Path {
     this.nextPointIndex++;
   }
   getNextPoint() {
-    return this.points[this.nextPointIndex];
+    return this.nextPointIndex < this.points.length
+      ? this.points[this.nextPointIndex]
+      : null;
   }
   nextPointIsDestination() {
     return this.nextPointIndex >= this.points.length - 1;
@@ -230,7 +236,7 @@ class FestivalGoer extends GameObject {
   static DIALOG_CHANCE = 10000;
 
   enterTent(tent: Tent) {
-    if (tent.occupied) {
+    if (!tent.isUsable()) {
       // give up on this one, find another
       this.clearTarget();
     } else {
@@ -346,7 +352,9 @@ class FestivalGoer extends GameObject {
                   )
             );
 
-            if (this.pos.distanceTo(this.path.getNextPoint()) > 100) {
+            const nextPoint = this.path.getNextPoint();
+
+            if (nextPoint && this.pos.distanceTo(nextPoint) > 100) {
               console.error(
                 'garbage pathfinding result',
                 this,
@@ -417,12 +425,17 @@ class FestivalGoer extends GameObject {
       if (!(path || this.isPathfinding)) {
         this.findPath(game, target);
       } else if (path) {
-        if (this.getCenter().distanceTo(path.getNextPoint()) < 1) {
+        const curPoint = path.getNextPoint();
+        if (curPoint && this.getCenter().distanceTo(curPoint) < 1) {
           path.advance();
         }
 
         if (!path.nextPointIsDestination()) {
-          playerMove.add(this.getCenter().directionTo(path.getNextPoint()));
+          const nextPoint = path.getNextPoint();
+          if (!nextPoint) {
+            throw new Error('expected next point');
+          }
+          playerMove.add(this.getCenter().directionTo(nextPoint));
         } else {
           playerMove.add(this.getCenter().directionTo(target.getCenter()));
         }
@@ -465,8 +478,8 @@ class PlayerState {
 
 class IdleState extends PlayerState {}
 
-class PissingState extends PlayerState {
-  static DURATION = 1000;
+class TimedAttackState extends PlayerState {
+  duration = 1000;
   startTime = Date.now();
   target: Tent;
 
@@ -476,13 +489,23 @@ class PissingState extends PlayerState {
   }
 
   update(player: Player): ?PlayerState {
-    if (Date.now() > this.startTime + PissingState.DURATION) {
+    if (Date.now() > this.startTime + this.duration) {
+      this.atEnd();
       return new IdleState();
     }
   }
 
+  atEnd() {}
+
   serialize() {
     return `${this.constructor.name} { target: ${this.target.id} }`;
+  }
+}
+
+class PissingState extends TimedAttackState {}
+class AttackingState extends TimedAttackState {
+  atEnd() {
+    this.target.doDamage();
   }
 }
 
@@ -519,7 +542,11 @@ class Player extends FestivalGoer {
       }
     });
 
-    if (playerMove.x !== 0 || playerMove.y !== 0) {
+    if (
+      (playerMove.x !== 0 || playerMove.y !== 0) &&
+      // can't move in attacking state
+      !(this.state instanceof AttackingState)
+    ) {
       playerMove = getMovementVelocity(playerMove, Player.MOVEMENT_SPEED);
       this.pos.add(playerMove);
       this.lastMove = playerMove;
@@ -530,7 +557,15 @@ class Player extends FestivalGoer {
 
     // find target
     const tentsByDistance = typeFilter(game.worldObjects, Tent)
-      .filter(t => t.isUsable() && this.withinPissRange(t))
+      .filter(
+        t =>
+          t.isUsable() &&
+          // if we're out of piss, only find attackable targets.
+          (this.piss > 0
+            ? this.withinPissRange(t)
+            : // if we're out of energy...
+              this.energy > 0 ? this.withinAttackRange(t) : false)
+      )
       .sort((a, b) => a.pos.distanceTo(this.pos) - b.pos.distanceTo(this.pos));
     const target = tentsByDistance.length ? tentsByDistance[0] : null;
     this.target = target;
@@ -552,9 +587,10 @@ class Player extends FestivalGoer {
   }
 
   doAttack(tent: Tent) {
-    if (this.energy && tent.damage()) {
+    if (this.energy && tent.canDamage()) {
       this.score += 100;
       this.energy--;
+      this.state = new AttackingState(tent);
     }
   }
 
@@ -734,6 +770,8 @@ class Game {
         clearInterval(interval);
       }
 
+      this._spawnPerson();
+      this._spawnPerson();
       this._spawnPerson();
     }, 5000);
   }
