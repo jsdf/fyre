@@ -5,8 +5,8 @@ import React, {Component} from 'react';
 import Vec2d from './Vec2d';
 import EasyStar from 'easystarjs';
 
-const TENT_ROWS = 4;
-const TENT_COLS = 4;
+const TENT_ROWS = 5;
+const TENT_COLS = 10;
 const TENT_SPACING_X = 96;
 const TENT_SPACING_Y = 64;
 const SCALE = 2;
@@ -15,7 +15,7 @@ const DEBUG_AI_TARGETS = false;
 const DEBUG_BBOX = false;
 const DEBUG_PLAYER = false;
 const DEBUG_PATHFINDING_NODES = false;
-const DEBUG_PATHFINDING_BBOXES = false;
+const DEBUG_PATHFINDING_BBOXES = true;
 const DEBUG_PATH_FOLLOWING = false;
 const DEBUG_PATH_FOLLOWING_STUCK = true;
 const VIEWBOX_PADDING_X = 128;
@@ -722,6 +722,15 @@ class Game {
   }
 
   _spawnTents() {
+    const pathfinding = [];
+    for (let i = 0; i < TENT_ROWS * Game.PATH_GRID_MUL; i++) {
+      pathfinding[i] = [];
+
+      for (let k = 0; k < TENT_COLS * Game.PATH_GRID_MUL; k++) {
+        pathfinding[i][k] = 0;
+      }
+    }
+
     for (var i = 0; i < TENT_COLS * TENT_ROWS; i++) {
       const col = i % TENT_COLS;
       const row = Math.floor(i / TENT_COLS);
@@ -736,21 +745,29 @@ class Game {
         TENT_START_POS.y +
         row * TENT_SPACING_Y +
         Math.floor(Math.random() * TENT_SPACING_Y / randomnessInv);
+
+      const tentBBoxStart = tent.pos.clone().add(tent.bboxStart);
+      const tentBBoxEnd = tent.pos.clone().add(tent.bboxEnd);
+      const tentPathfindingStartPos = this.toPathfindingCoords(tentBBoxStart);
+      const tentPathfindingEndPos = this.toPathfindingCoords(tentBBoxEnd);
+
+      for (
+        let pathRow = tentPathfindingStartPos.y;
+        pathRow <= tentPathfindingEndPos.y;
+        pathRow++
+      ) {
+        for (
+          let pathCol = tentPathfindingStartPos.x;
+          pathCol <= tentPathfindingEndPos.x;
+          pathCol++
+        ) {
+          pathfinding[pathRow][pathCol] = 1;
+        }
+      }
+
       this.worldObjects.push(tent);
     }
 
-    const pathfinding = [];
-    for (let i = 0; i < TENT_ROWS * Game.PATH_GRID_MUL; i++) {
-      pathfinding[i] = [];
-
-      for (let k = 0; k < TENT_COLS * Game.PATH_GRID_MUL; k++) {
-        pathfinding[i][k] =
-          i % Game.PATH_GRID_MUL < Game.PATH_GRID_TENT_SIZE &&
-          k % Game.PATH_GRID_MUL < Game.PATH_GRID_TENT_SIZE
-            ? 1
-            : 0;
-      }
-    }
     this.pathfindingGrid = pathfinding;
     this.easystar.setGrid(pathfinding);
     this.easystar.setAcceptableTiles([0]);
