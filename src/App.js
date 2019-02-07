@@ -17,7 +17,7 @@ const SCALE = 2;
 const DEBUG_OBJECTS = false;
 const DEBUG_AI_TARGETS = false;
 const DEBUG_BBOX = false;
-const DEBUG_PLAYER = false;
+const DEBUG_PLAYER = true;
 const DEBUG_PATHFINDING_NODES = false;
 const DEBUG_PATHFINDING_BBOXES = true;
 const DEBUG_PATH_FOLLOWING = false;
@@ -686,7 +686,9 @@ class Game {
   constructor() {
     this._initPathfinding();
     this._spawnTents();
+    this._spawnBus();
     this.worldObjects.push(this.player);
+
     this._spawnPowerups();
     this._startSpawningPeople();
   }
@@ -726,6 +728,13 @@ class Game {
     pos.x = Game.PATH_GRID_OFFSET.x + (point.x + 0.5) * gridItemWidth;
     pos.y = Game.PATH_GRID_OFFSET.y + (point.y + 0.5) * gridItemHeight;
     return pos;
+  }
+
+  _spawnBus() {
+    const bus = new GameObject({x: -120, y: 20});
+    bus.sprite = assets.bus;
+
+    this.worldObjects.push(bus);
   }
 
   _spawnTent(pos: Vec2d) {
@@ -1308,6 +1317,10 @@ const Hud = (props: {game: Game}) => {
             {
               player: {
                 state: props.game.player.state.serialize(),
+                pos: props.game.player.pos,
+                pathGridPos: props.game.toPathfindingCoords(
+                  props.game.player.pos
+                ),
               },
               target: target && {
                 id: target.id,
