@@ -15,7 +15,7 @@ const DEBUG_AI_TARGETS = false;
 const DEBUG_BBOX = false;
 const DEBUG_PLAYER = false;
 const DEBUG_PATHFINDING_NODES = false;
-const DEBUG_PATHFINDING_BBOXES = true;
+const DEBUG_PATHFINDING_BBOXES = false;
 const DEBUG_PATH_FOLLOWING = false;
 const DEBUG_PATH_FOLLOWING_STUCK = true;
 const VIEWBOX_PADDING_X = 128;
@@ -30,7 +30,7 @@ function toScreenPx(px) {
 
 const getImage = (() => {
   const cache = new Map();
-  return url => {
+  return (url: $Values<typeof assets> | '') => {
     if (url == '') {
       return;
     }
@@ -227,6 +227,7 @@ class FestivalGoer extends GameObject {
 
   static DIALOG = [
     'Where can I charge my drone?',
+    "We'll remember this for the rest of our lives",
     "I'm shooting video in both horizontal & vertical formats",
     "They're not EarPods, they're AirPods",
     'I quit my job to come to this',
@@ -308,7 +309,7 @@ class FestivalGoer extends GameObject {
       return;
     }
 
-    const searchRadius = Math.floor(Game.PATH_GRID_TENT_SIZE / 2) + 1;
+    const searchRadius = Game.PATH_GRID_TENT_SIZE; // more than the width of a tent
 
     if (pathfindingGrid[start.y][start.x] !== 0) {
       const improvedStart = this.findNearestWalkableTile(
@@ -354,7 +355,7 @@ class FestivalGoer extends GameObject {
 
             const nextPoint = this.path.getNextPoint();
 
-            if (nextPoint && this.pos.distanceTo(nextPoint) > 100) {
+            if (false && nextPoint && this.pos.distanceTo(nextPoint) > 100) {
               console.error(
                 'garbage pathfinding result',
                 this,
@@ -658,6 +659,8 @@ function clamp(x, min, max) {
   return Math.max(Math.min(x, max), min);
 }
 
+type EditorState = {mode: 'pathfinding'} | {mode: 'objects'} | {mode: 'play'};
+
 class Game {
   frame = 0;
   player = new Player();
@@ -672,6 +675,7 @@ class Game {
   worldObjects = [];
 
   view = new View();
+  editor = {mode: 'play'};
 
   easystar = new EasyStar.js();
   pathfindingGrid: ?Array<Array<number>> = null;
@@ -774,6 +778,23 @@ class Game {
     this.easystar.enableDiagonals();
 
     this.easystar.enableSync();
+  }
+
+  togglePathfindingTile(pageX: number, pageY: number) {
+    const pathfinding = this.pathfindingGrid;
+    const pathPoint = this.toPathfindingCoords(
+      new Vec2d({
+        x: Math.floor(pageX / SCALE),
+        y: Math.floor(pageY / SCALE),
+      })
+    );
+
+    if (!pathfinding) return;
+
+    pathfinding[pathPoint.y][pathPoint.x] =
+      pathfinding[pathPoint.y][pathPoint.x] === 0 ? 1 : 0;
+
+    this.easystar.setGrid(pathfinding);
   }
 
   _spawnPerson() {
@@ -1123,6 +1144,24 @@ const renderObjectImage = (
   renderBBox(ctx, view, obj);
 };
 
+const renderImage = (
+  ctx: CanvasRenderingContext2D,
+  view: View,
+  pos: Vec2d,
+  imageUrl: $Values<typeof assets>
+) => {
+  const image = getImage(imageUrl);
+  if (!image) return;
+
+  ctx.drawImage(
+    image,
+    view.toScreenX(Math.floor(pos.x)),
+    view.toScreenY(Math.floor(pos.y)),
+    image.width,
+    image.height
+  );
+};
+
 const renderLabel = (
   ctx: CanvasRenderingContext2D,
   view: View,
@@ -1149,9 +1188,16 @@ const renderTent = (ctx: CanvasRenderingContext2D, view: View, tent: Tent) => {
   renderObjectImage(ctx, view, tent);
 
   if (tent.occupied) {
-    renderLabel(ctx, view, tent, 'occupied', 'red', -5);
+    // renderLabel(ctx, view, tent, 'occupied', 'red', -5);
+    renderImage(
+      ctx,
+      view,
+      tent.pos.clone().add({x: -8, y: 0}),
+      assets.occupied
+    );
   } else if (tent.pissiness >= Tent.MAX_PISSINESS) {
-    renderLabel(ctx, view, tent, 'pissy', 'blue', -5);
+    // renderLabel(ctx, view, tent, 'pissy', 'blue', -5);
+    renderImage(ctx, view, tent.pos.clone().add({x: -8, y: 0}), assets.pissed);
   }
 };
 
@@ -1383,11 +1429,18 @@ class App extends Component<{}, void> {
       }
     }
   }
+
+  _handleClick = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+    if (this.game.editor.mode == 'pathfinding') {
+      this.game.togglePathfindingTile(event.pageX, event.pageY);
+    }
+  };
   render() {
     return (
       <div className="App">
         <canvas
           ref={this._onCanvas}
+          onClick={this._handleClick}
           width={window.innerWidth / 2}
           height={window.innerHeight / 2}
           style={{transform: `scale(${SCALE})`, transformOrigin: 'top left'}}

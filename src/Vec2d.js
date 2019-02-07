@@ -1,10 +1,12 @@
 // @flow
 
+type Vec2dInit = {x: number, y: number};
+
 export default class Vec2d {
   x: number = 0;
   y: number = 0;
 
-  constructor(init?: {x: number, y: number}) {
+  constructor(init?: Vec2dInit) {
     if (init) {
       this.x = init.x;
       this.y = init.y;
@@ -15,13 +17,13 @@ export default class Vec2d {
     return new Vec2d(this);
   }
 
-  add(other: Vec2d) {
+  add(other: Vec2dInit) {
     this.x += other.x;
     this.y += other.y;
     return this;
   }
 
-  sub(other: Vec2d) {
+  sub(other: Vec2dInit) {
     this.x -= other.x;
     this.y -= other.y;
     return this;
@@ -54,14 +56,11 @@ export default class Vec2d {
     return this;
   }
 
-  distanceTo(other: Vec2d) {
+  distanceTo(other: Vec2dInit) {
     return Math.sqrt((this.x - other.x) ** 2 + (this.y - other.y) ** 2);
   }
 
-  directionTo(other: Vec2d) {
-    return other
-      .clone()
-      .sub(this)
-      .normalise();
+  directionTo(other: Vec2dInit) {
+    return new Vec2d(other).sub(this).normalise();
   }
 }
