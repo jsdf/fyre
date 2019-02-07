@@ -17,12 +17,13 @@ const DEBUG_PLAYER = false;
 const DEBUG_PATHFINDING_NODES = false;
 const DEBUG_PATHFINDING_BBOXES = false;
 const DEBUG_PATH_FOLLOWING = false;
-const DEBUG_PATH_FOLLOWING_STUCK = true;
+const DEBUG_PATH_FOLLOWING_STUCK = false;
 const VIEWBOX_PADDING_X = 128;
 const VIEWBOX_PADDING_Y = 64;
 const DARK = false;
 
 const TENT_START_POS = new Vec2d({x: 20, y: 20});
+const BG_OFFSET = new Vec2d({x: -400, y: -800});
 
 function toScreenPx(px) {
   return px * SCALE;
@@ -297,11 +298,9 @@ class FestivalGoer extends GameObject {
   }
 
   findPath(game: Game, target: Tent) {
-    const startTime = performance.now();
     this.isPathfinding = true;
     let start = game.toPathfindingCoords(this.getCenter());
     let end = game.toPathfindingCoords(target.getCenter());
-    // end.y += Game.PATH_GRID_TENT_SIZE;
 
     const {pathfindingGrid} = game;
     if (pathfindingGrid == null) {
@@ -374,10 +373,6 @@ class FestivalGoer extends GameObject {
     }
 
     game.easystar.calculate();
-
-    console.log(
-      `pathfinding took ${(performance.now() - startTime).toFixed(2)}ms`
-    );
   }
 
   activeDialog: ?{text: string, startTime: number} = null;
@@ -1081,6 +1076,22 @@ const renderTilesInView = (ctx: CanvasRenderingContext2D, view: View) => {
   }
 };
 
+const renderBG = (ctx: CanvasRenderingContext2D, view: View) => {
+  const image = getImage(assets.bg);
+  if (!image) return;
+
+  const viewWidth = window.innerWidth / SCALE;
+  const viewHeight = window.innerHeight / SCALE;
+
+  ctx.drawImage(
+    image,
+    Math.floor(view.toScreenX(BG_OFFSET.x)),
+    Math.floor(view.toScreenY(BG_OFFSET.y)),
+    image.width,
+    image.height
+  );
+};
+
 const renderPissStream = (
   ctx: CanvasRenderingContext2D,
   view: View,
@@ -1221,8 +1232,8 @@ const renderTarget = (
 
   const label =
     game.player.target && game.player.withinAttackRange(game.player.target)
-      ? `smash ${target.damageTaken}/${Tent.MAX_DAMAGE}`
-      : `piss on ${target.pissiness}/${Tent.MAX_PISSINESS}`;
+      ? `smash`
+      : `piss on`;
   ctx.font = '10px monospace';
   ctx.fillStyle = 'black';
 
@@ -1332,7 +1343,7 @@ class App extends Component<{}, void> {
     requestAnimationFrame(() => {
       this.game.frame++;
       this._update();
-      this._renderCanvas();
+      // this._renderCanvas();
       this.forceUpdate(); // TODO: remove this when hud doesn't need react
       this._enqueueFrame();
     });
@@ -1351,7 +1362,8 @@ class App extends Component<{}, void> {
       const ctx = canvas.getContext('2d');
       ctx.globalCompositeOperation = 'source-over';
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      renderTilesInView(ctx, this.game.view);
+      // renderTilesInView(ctx, this.game.view);
+      renderBG(ctx, this.game.view);
       this.game.worldObjects.forEach((obj, i) => {
         if (!obj.enabled) {
           return;

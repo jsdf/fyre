@@ -18,4 +18,5 @@ export default {
   target: require('./assets/target.png'),
   pissed: require('./assets/pissed.png'),
   occupied: require('./assets/occupied.png'),
+  bg: require('./assets/bg.png'),
 };
