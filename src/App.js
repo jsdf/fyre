@@ -15,12 +15,16 @@ const DEBUG_AI_TARGETS = false;
 const DEBUG_BBOX = false;
 const DEBUG_PLAYER = false;
 const DEBUG_PATHFINDING_NODES = false;
-const DEBUG_PATHFINDING_BBOXES = false;
+const DEBUG_PATHFINDING_BBOXES = true;
 const DEBUG_PATH_FOLLOWING = false;
-const DEBUG_PATH_FOLLOWING_STUCK = false;
+const DEBUG_PATH_FOLLOWING_STUCK = true;
 const VIEWBOX_PADDING_X = 128;
 const VIEWBOX_PADDING_Y = 64;
 const DARK = false;
+
+const WALKABLE = 0;
+const UNWALKABLE = 1;
+type Walkability = typeof WALKABLE | typeof UNWALKABLE;
 
 const TENT_START_POS = new Vec2d({x: 20, y: 20});
 const BG_OFFSET = new Vec2d({x: -400, y: -800});
@@ -282,7 +286,7 @@ class FestivalGoer extends GameObject {
           walkable:
             pathfindingGrid[pathfindingPosClamped.y][
               pathfindingPosClamped.x
-            ] === 0,
+            ] === WALKABLE,
         });
       }
     }
@@ -310,7 +314,7 @@ class FestivalGoer extends GameObject {
 
     const searchRadius = Game.PATH_GRID_TENT_SIZE; // more than the width of a tent
 
-    if (pathfindingGrid[start.y][start.x] !== 0) {
+    if (pathfindingGrid[start.y][start.x] !== WALKABLE) {
       const improvedStart = this.findNearestWalkableTile(
         game,
         start,
@@ -320,18 +324,18 @@ class FestivalGoer extends GameObject {
         start = improvedStart;
       }
     }
-    if (pathfindingGrid[end.y][end.x] !== 0) {
+    if (pathfindingGrid[end.y][end.x] !== WALKABLE) {
       const improvedEnd = this.findNearestWalkableTile(game, end, searchRadius);
       if (improvedEnd) {
         end = improvedEnd;
       }
     }
 
-    if (pathfindingGrid[start.y][start.x] !== 0) {
+    if (pathfindingGrid[start.y][start.x] !== WALKABLE) {
       console.error('pathfinding: start is unwalkable');
       return;
     }
-    if (pathfindingGrid[end.y][end.x] !== 0) {
+    if (pathfindingGrid[end.y][end.x] !== WALKABLE) {
       console.error('pathfinding: end is unwalkable');
       return;
     }
@@ -676,6 +680,7 @@ class Game {
   pathfindingGrid: ?Array<Array<number>> = null;
 
   constructor() {
+    this._initPathfinding();
     this._spawnTents();
     this.worldObjects.push(this.player);
     this._spawnPowerups();
@@ -720,74 +725,102 @@ class Game {
     return pos;
   }
 
-  _spawnTents() {
+  _spawnTent(pos: Vec2d) {
+    const tent = new Tent(pos);
+
+    this._makeObjectBBoxUnwalkable(tent);
+
+    this.worldObjects.push(tent);
+  }
+
+  _makeObjectBBoxUnwalkable(obj: GameObject) {
+    const objBBoxStart = obj.pos.clone().add(obj.bboxStart);
+    const objBBoxEnd = obj.pos.clone().add(obj.bboxEnd);
+    const objPathfindingStartPos = this.toPathfindingCoords(objBBoxStart);
+    const objPathfindingEndPos = this.toPathfindingCoords(objBBoxEnd);
+
+    // set interecting pathfinding tiles unwalkable
+    for (
+      let pathRow = objPathfindingStartPos.y;
+      pathRow <= objPathfindingEndPos.y;
+      pathRow++
+    ) {
+      for (
+        let pathCol = objPathfindingStartPos.x;
+        pathCol <= objPathfindingEndPos.x;
+        pathCol++
+      ) {
+        this.setPathfindingTile({x: pathCol, y: pathRow}, UNWALKABLE);
+      }
+    }
+  }
+
+  _initPathfinding() {
     const pathfinding = [];
     for (let i = 0; i < TENT_ROWS * Game.PATH_GRID_MUL; i++) {
       pathfinding[i] = [];
 
       for (let k = 0; k < TENT_COLS * Game.PATH_GRID_MUL; k++) {
-        pathfinding[i][k] = 0;
+        pathfinding[i][k] = WALKABLE;
       }
     }
-
-    for (var i = 0; i < TENT_COLS * TENT_ROWS; i++) {
-      const col = i % TENT_COLS;
-      const row = Math.floor(i / TENT_COLS);
-
-      const randomnessInv = 6;
-      const tent = new Tent();
-      tent.pos.x =
-        TENT_START_POS.x +
-        col * TENT_SPACING_X +
-        Math.floor(Math.random() * TENT_SPACING_X / randomnessInv);
-      tent.pos.y =
-        TENT_START_POS.y +
-        row * TENT_SPACING_Y +
-        Math.floor(Math.random() * TENT_SPACING_Y / randomnessInv);
-
-      const tentBBoxStart = tent.pos.clone().add(tent.bboxStart);
-      const tentBBoxEnd = tent.pos.clone().add(tent.bboxEnd);
-      const tentPathfindingStartPos = this.toPathfindingCoords(tentBBoxStart);
-      const tentPathfindingEndPos = this.toPathfindingCoords(tentBBoxEnd);
-
-      for (
-        let pathRow = tentPathfindingStartPos.y;
-        pathRow <= tentPathfindingEndPos.y;
-        pathRow++
-      ) {
-        for (
-          let pathCol = tentPathfindingStartPos.x;
-          pathCol <= tentPathfindingEndPos.x;
-          pathCol++
-        ) {
-          pathfinding[pathRow][pathCol] = 1;
-        }
-      }
-
-      this.worldObjects.push(tent);
-    }
-
     this.pathfindingGrid = pathfinding;
     this.easystar.setGrid(pathfinding);
-    this.easystar.setAcceptableTiles([0]);
+    this.easystar.setAcceptableTiles([WALKABLE]);
     this.easystar.enableDiagonals();
 
     this.easystar.enableSync();
   }
 
-  togglePathfindingTile(pageX: number, pageY: number) {
+  _spawnTents() {
+    for (var i = 0; i < TENT_COLS * TENT_ROWS; i++) {
+      const col = i % TENT_COLS;
+      const row = Math.floor(i / TENT_COLS);
+
+      const randomnessInv = 6;
+      const pos = new Vec2d({
+        x:
+          TENT_START_POS.x +
+          col * TENT_SPACING_X +
+          Math.floor(Math.random() * TENT_SPACING_X / randomnessInv),
+        y:
+          TENT_START_POS.y +
+          row * TENT_SPACING_Y +
+          Math.floor(Math.random() * TENT_SPACING_Y / randomnessInv),
+      });
+
+      this._spawnTent(pos);
+    }
+  }
+
+  togglePathfindingTile(pathPoint: {x: number, y: number}) {
+    this._setPathfindingTile(pathPoint);
+  }
+
+  setPathfindingTile(pathPoint: {x: number, y: number}, setTo: Walkability) {
+    this._setPathfindingTile(pathPoint, setTo);
+  }
+
+  _setPathfindingTile(pathPoint: {x: number, y: number}, setTo?: ?Walkability) {
+    console.log('_setPathfindingTile', {pathPoint, setTo});
     const pathfinding = this.pathfindingGrid;
-    const pathPoint = this.toPathfindingCoords(
-      new Vec2d({
-        x: Math.floor(pageX / SCALE),
-        y: Math.floor(pageY / SCALE),
-      })
-    );
 
     if (!pathfinding) return;
 
     pathfinding[pathPoint.y][pathPoint.x] =
-      pathfinding[pathPoint.y][pathPoint.x] === 0 ? 1 : 0;
+      setTo == null
+        ? pathfinding[pathPoint.y][pathPoint.x] === WALKABLE
+          ? UNWALKABLE
+          : WALKABLE // toggle
+        : setTo;
+
+    console.log(
+      'set',
+      pathPoint.x,
+      pathPoint.y,
+      'to',
+      pathfinding[pathPoint.y][pathPoint.x]
+    );
 
     this.easystar.setGrid(pathfinding);
   }
@@ -1444,7 +1477,13 @@ class App extends Component<{}, void> {
 
   _handleClick = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
     if (this.game.editor.mode == 'pathfinding') {
-      this.game.togglePathfindingTile(event.pageX, event.pageY);
+      const pathPoint = this.game.toPathfindingCoords(
+        new Vec2d({
+          x: Math.floor(event.pageX / SCALE),
+          y: Math.floor(event.pageY / SCALE),
+        })
+      );
+      this.game.togglePathfindingTile(pathPoint);
     }
   };
   render() {
