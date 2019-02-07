@@ -9,6 +9,10 @@ const TENT_ROWS = 5;
 const TENT_COLS = 10;
 const TENT_SPACING_X = 96;
 const TENT_SPACING_Y = 64;
+const PATH_GRID_ROWS = 5;
+const PATH_GRID_COLS = 15;
+const PATH_GRID_UNIT_WIDTH = 64;
+const PATH_GRID_UNIT_HEIGHT = 64;
 const SCALE = 2;
 const DEBUG_OBJECTS = false;
 const DEBUG_AI_TARGETS = false;
@@ -688,40 +692,39 @@ class Game {
   }
 
   static PATH_GRID_MUL = 5;
-  static PATH_GRID_TENT_SIZE = 3;
-  static PATH_TENT_OFFSET = TENT_START_POS.clone().add(
+  static PATH_GRID_TENT_SIZE = 4;
+  static PATH_GRID_OFFSET = TENT_START_POS.clone().add(
     new Vec2d({
       x: 0, //TENT_SPACING_X / Game.PATH_GRID_MUL / 2,
       y: TENT_SPACING_Y / Game.PATH_GRID_MUL / 2,
     })
   );
-  // static PATH_TENT_OFFSET = TENT_START_POS;
 
   toPathfindingCoords(pos: Vec2d) {
     const x = clamp(
       Math.floor(
-        (pos.x - Game.PATH_TENT_OFFSET.x) /
-          (TENT_SPACING_X / Game.PATH_GRID_MUL)
+        (pos.x - Game.PATH_GRID_OFFSET.x) /
+          (PATH_GRID_UNIT_WIDTH / Game.PATH_GRID_MUL)
       ),
       0,
-      TENT_COLS * Game.PATH_GRID_MUL - 1
+      PATH_GRID_COLS * Game.PATH_GRID_MUL - 1
     );
     const y = clamp(
       Math.floor(
-        (pos.y - Game.PATH_TENT_OFFSET.y) /
-          (TENT_SPACING_Y / Game.PATH_GRID_MUL)
+        (pos.y - Game.PATH_GRID_OFFSET.y) /
+          (PATH_GRID_UNIT_HEIGHT / Game.PATH_GRID_MUL)
       ),
       0,
-      TENT_ROWS * Game.PATH_GRID_MUL - 1
+      PATH_GRID_ROWS * Game.PATH_GRID_MUL - 1
     );
     return {x, y};
   }
   fromPathfindingCoords(point: {x: number, y: number}) {
     const pos = new Vec2d();
-    const gridItemWidth = TENT_SPACING_X / Game.PATH_GRID_MUL;
-    const gridItemHeight = TENT_SPACING_Y / Game.PATH_GRID_MUL;
-    pos.x = Game.PATH_TENT_OFFSET.x + (point.x + 0.5) * gridItemWidth;
-    pos.y = Game.PATH_TENT_OFFSET.y + (point.y + 0.5) * gridItemHeight;
+    const gridItemWidth = PATH_GRID_UNIT_WIDTH / Game.PATH_GRID_MUL;
+    const gridItemHeight = PATH_GRID_UNIT_HEIGHT / Game.PATH_GRID_MUL;
+    pos.x = Game.PATH_GRID_OFFSET.x + (point.x + 0.5) * gridItemWidth;
+    pos.y = Game.PATH_GRID_OFFSET.y + (point.y + 0.5) * gridItemHeight;
     return pos;
   }
 
@@ -757,10 +760,10 @@ class Game {
 
   _initPathfinding() {
     const pathfinding = [];
-    for (let i = 0; i < TENT_ROWS * Game.PATH_GRID_MUL; i++) {
+    for (let i = 0; i < PATH_GRID_ROWS * Game.PATH_GRID_MUL; i++) {
       pathfinding[i] = [];
 
-      for (let k = 0; k < TENT_COLS * Game.PATH_GRID_MUL; k++) {
+      for (let k = 0; k < PATH_GRID_COLS * Game.PATH_GRID_MUL; k++) {
         pathfinding[i][k] = WALKABLE;
       }
     }
@@ -802,7 +805,6 @@ class Game {
   }
 
   _setPathfindingTile(pathPoint: {x: number, y: number}, setTo?: ?Walkability) {
-    console.log('_setPathfindingTile', {pathPoint, setTo});
     const pathfinding = this.pathfindingGrid;
 
     if (!pathfinding) return;
@@ -982,8 +984,8 @@ const renderPathfindingGrid = (
     if (!game.pathfindingGrid) return;
     const grid = game.pathfindingGrid;
 
-    const width = Math.floor(TENT_SPACING_X / Game.PATH_GRID_MUL);
-    const height = Math.floor(TENT_SPACING_Y / Game.PATH_GRID_MUL);
+    const width = Math.floor(PATH_GRID_UNIT_WIDTH / Game.PATH_GRID_MUL);
+    const height = Math.floor(PATH_GRID_UNIT_HEIGHT / Game.PATH_GRID_MUL);
     for (let row = 0; row < grid.length; row++) {
       for (let col = 0; col < grid[row].length; col++) {
         const pos = game.fromPathfindingCoords({x: col, y: row});
