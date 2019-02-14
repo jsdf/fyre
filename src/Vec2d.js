@@ -1,6 +1,6 @@
 // @flow
 
-type Vec2dInit = {x: number, y: number};
+export type Vec2dInit = {x: number, y: number};
 
 export default class Vec2d {
   x: number = 0;
@@ -62,5 +62,12 @@ export default class Vec2d {
 
   directionTo(other: Vec2dInit) {
     return new Vec2d(other).sub(this).normalise();
+  }
+
+  toJSON() {
+    return {
+      x: this.x,
+      y: this.y,
+    };
   }
 }

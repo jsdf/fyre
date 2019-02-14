@@ -4,6 +4,12 @@ import assets from './assets';
 import React, {Component} from 'react';
 import Vec2d from './Vec2d';
 import EasyStar from 'easystarjs';
+import objectsData from './objects.json';
+import type {Vec2dInit} from './Vec2d';
+
+type GameObjectInit = {type: string, pos: {x: number, y: number}};
+
+const objects: Array<GameObjectInit> = objectsData;
 
 const TENT_ROWS = 5;
 const TENT_COLS = 10;
@@ -35,6 +41,10 @@ const BG_OFFSET = new Vec2d({x: -400, y: -800});
 
 function toScreenPx(px) {
   return px * SCALE;
+}
+
+function last<T>(arr: Array<T>): T {
+  return arr[arr.length - 1];
 }
 
 const getImage = (() => {
@@ -86,7 +96,7 @@ class GameObject {
   bboxEnd = new Vec2d(); // bottom right
   enabled = true;
 
-  constructor(init?: {x: number, y: number}) {
+  constructor(init?: Vec2dInit) {
     if (init) {
       this.pos.x = init.x;
       this.pos.y = init.y;
@@ -107,6 +117,13 @@ class GameObject {
           .sub(this.bboxStart)
           .divideScalar(2)
       );
+  }
+
+  toJSON() {
+    return {
+      type: this.constructor.name,
+      pos: this.pos.toJSON(),
+    };
   }
 }
 
@@ -186,6 +203,10 @@ class CheeseSandwich extends Powerup {
   }
 }
 
+class Bus extends GameObject {
+  sprite = assets.bus;
+}
+
 function typeFilter<T>(objs: Array<GameObject>, Typeclass: Class<T>): Array<T> {
   const result = [];
   for (var i = 0; i < objs.length; i++) {
@@ -260,7 +281,7 @@ class FestivalGoer extends GameObject {
 
     const candidate = tents[Math.floor(Math.random() * tents.length)];
 
-    if (candidate.isUsable()) {
+    if (candidate && candidate.isUsable()) {
       this.target = candidate;
     }
   }
@@ -475,7 +496,7 @@ class FestivalGoer extends GameObject {
 class PlayerState {
   update(player: Player): ?PlayerState {}
 
-  serialize() {
+  toString() {
     return `${this.constructor.name} {}`;
   }
 }
@@ -501,7 +522,7 @@ class TimedAttackState extends PlayerState {
 
   atEnd() {}
 
-  serialize() {
+  toString() {
     return `${this.constructor.name} { target: ${this.target.id} }`;
   }
 }
@@ -640,6 +661,12 @@ class View {
   toScreenY(y: number) {
     return y - this.offset.y;
   }
+  fromScreenX(x: number) {
+    return x + this.offset.x;
+  }
+  fromScreenY(y: number) {
+    return y + this.offset.y;
+  }
 }
 
 function calculateViewAdjustment(
@@ -662,7 +689,10 @@ function clamp(x, min, max) {
   return Math.max(Math.min(x, max), min);
 }
 
-type EditorState = {mode: 'pathfinding'} | {mode: 'objects'} | {mode: 'play'};
+type EditorState =
+  | {mode: 'pathfinding'}
+  | {mode: 'objects', type: Class<GameObject>}
+  | {mode: 'play'};
 
 class Game {
   frame = 0;
@@ -675,7 +705,7 @@ class Game {
     attack: false,
   };
 
-  worldObjects = [];
+  worldObjects: Array<GameObject> = [];
 
   view = new View();
   editor = {mode: 'play'};
@@ -685,12 +715,57 @@ class Game {
 
   constructor() {
     this._initPathfinding();
-    this._spawnTents();
-    this._spawnBus();
+    this._spawnObjects();
+
+    // this._spawnTents();
+    // this._spawnBus();
     this.worldObjects.push(this.player);
 
-    this._spawnPowerups();
+    // this._spawnPowerups();
     this._startSpawningPeople();
+  }
+
+  spawnObjectOfType(obj: GameObjectInit) {
+    switch (obj.type) {
+      case 'Tent':
+        return this._spawnTent(obj.pos);
+      case 'Bus':
+        return this._spawnBus(obj.pos);
+      case 'CheeseSandwich':
+        return this._spawnGeneric(obj.pos, CheeseSandwich);
+      case 'Water':
+        return this._spawnGeneric(obj.pos, Water);
+    }
+    throw new Error(`unknown object type ${obj.type}`);
+  }
+
+  _spawnObjects() {
+    objects.forEach(obj => {
+      this.spawnObjectOfType(obj);
+    });
+  }
+
+  _spawnGeneric(pos: Vec2dInit, Class: Class<GameObject>) {
+    this.worldObjects.push(new Class(pos));
+  }
+
+  dumpObjects() {
+    return JSON.stringify(
+      this.worldObjects
+        .map(obj => {
+          switch (obj.constructor.name) {
+            case 'Tent':
+            case 'Bus':
+            case 'CheeseSandwich':
+            case 'Water':
+              return obj.toJSON();
+          }
+          return null;
+        })
+        .filter(Boolean),
+      null,
+      2
+    );
   }
 
   static PATH_GRID_MUL = 5;
@@ -719,6 +794,9 @@ class Game {
       0,
       PATH_GRID_ROWS * Game.PATH_GRID_MUL - 1
     );
+    if (Number.isNaN(x) || Number.isNaN(y)) {
+      debugger;
+    }
     return {x, y};
   }
   fromPathfindingCoords(point: {x: number, y: number}) {
@@ -730,14 +808,13 @@ class Game {
     return pos;
   }
 
-  _spawnBus() {
-    const bus = new GameObject({x: -120, y: 20});
-    bus.sprite = assets.bus;
+  _spawnBus(pos: Vec2dInit) {
+    const bus = new Bus(pos);
 
     this.worldObjects.push(bus);
   }
 
-  _spawnTent(pos: Vec2d) {
+  _spawnTent(pos: Vec2dInit) {
     const tent = new Tent(pos);
 
     this._makeObjectBBoxUnwalkable(tent);
@@ -1316,7 +1393,7 @@ const Hud = (props: {game: Game}) => {
           JSON.stringify(
             {
               player: {
-                state: props.game.player.state.serialize(),
+                state: props.game.player.state.toString(),
                 pos: props.game.player.pos,
                 pathGridPos: props.game.toPathfindingCoords(
                   props.game.player.pos
@@ -1337,6 +1414,73 @@ const Hud = (props: {game: Game}) => {
     </div>
   );
 };
+
+class Editor extends React.Component<{game: Game}> {
+  _initMode(name: string) {
+    switch (name) {
+      case 'pathfinding':
+        return {mode: 'pathfinding'};
+      case 'objects':
+        return {mode: 'objects', type: Tent};
+    }
+    return {mode: 'play'};
+  }
+  _handleEditorModeChange = () => {
+    const prevMode = this.props.game.editor.mode;
+    const modes = ['pathfinding', 'objects', 'play'];
+    const nextMode = modes[(modes.indexOf(prevMode) + 1) % modes.length];
+
+    this.props.game.editor = this._initMode(nextMode);
+  };
+  _handleObjectTypeChange = () => {
+    const {editor} = this.props.game;
+    if (editor.mode !== 'objects') {
+      throw new Error(`wrong mode ${editor.mode}`);
+    }
+    const prevObjectType = editor.type;
+    const types = [Tent, CheeseSandwich, Water, Bus];
+    const nextObjectType =
+      types[(types.indexOf(prevObjectType) + 1) % types.length];
+
+    editor.type = nextObjectType;
+  };
+  render() {
+    const {editor} = this.props.game;
+
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          width: 300,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-end',
+        }}
+      >
+        <div>
+          <button onClick={this._handleEditorModeChange}>{editor.mode}</button>
+        </div>
+        {editor.mode === 'objects' && (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+            }}
+            onClick={this._handleObjectTypeChange}
+          >
+            <div>{editor.type.name}</div>
+            <div>
+              <img src={new editor.type().sprite} />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+}
 
 class App extends Component<{}, void> {
   game = new Game();
@@ -1491,14 +1635,19 @@ class App extends Component<{}, void> {
   }
 
   _handleClick = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
-    if (this.game.editor.mode == 'pathfinding') {
-      const pathPoint = this.game.toPathfindingCoords(
-        new Vec2d({
-          x: Math.floor(event.pageX / SCALE),
-          y: Math.floor(event.pageY / SCALE),
-        })
-      );
-      this.game.togglePathfindingTile(pathPoint);
+    const pos = new Vec2d({
+      x: Math.floor(this.game.view.fromScreenX(event.pageX / SCALE)),
+      y: Math.floor(this.game.view.fromScreenY(event.pageY / SCALE)),
+    });
+    switch (this.game.editor.mode) {
+      case 'pathfinding': {
+        const pathPoint = this.game.toPathfindingCoords(pos);
+        this.game.togglePathfindingTile(pathPoint);
+        break;
+      }
+      case 'objects': {
+        this.game.spawnObjectOfType({type: this.game.editor.type.name, pos});
+      }
     }
   };
   render() {
@@ -1514,6 +1663,7 @@ class App extends Component<{}, void> {
         />
 
         <Hud game={this.game} />
+        <Editor game={this.game} />
       </div>
     );
   }
