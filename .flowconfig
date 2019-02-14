@@ -9,3 +9,6 @@
 [options]
 
 [strict]
+
+[untyped]
+.*/sounds/.*

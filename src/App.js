@@ -1,6 +1,7 @@
 // @flow
 import './App.css';
 import assets from './assets';
+import sounds from './sounds';
 import React, {Component} from 'react';
 import Vec2d from './Vec2d';
 import EasyStar from 'easystarjs';
@@ -72,8 +73,54 @@ const getImage = (() => {
   };
 })();
 
+declare class Audio {
+  oncanplay: Function;
+  onerror: Function;
+  src: string;
+  play: Function;
+  volume: number;
+}
+
+const getSound = (() => {
+  const cache = new Map();
+  return (url: string) => {
+    if (url == '') {
+      return;
+    }
+    const cached = cache.get(url);
+    if (cached) {
+      return cached.audio;
+    } else {
+      const audioRef: {audio: ?Audio} = {audio: null};
+      const audio = new Audio();
+      audio.oncanplay = () => {
+        audioRef.audio = audio;
+      };
+      audio.onerror = () => {
+        throw new Error(`failed to load ${url}`);
+      };
+      audio.src = url;
+      cache.set(url, audioRef);
+    }
+    return null;
+  };
+})();
+
+function playSound(url: string) {
+  const sound = getSound(url);
+  if (sound) {
+    sound.play();
+    sound.volume = 0.5;
+  } else {
+    console.error('sound not ready', JSON.stringify(url));
+  }
+}
+
 function precacheImageAssets() {
   Object.keys(assets).forEach(key => getImage(assets[key]));
+}
+function precacheAudioAssets() {
+  Object.keys(sounds).forEach(key => getSound(sounds[key]));
 }
 
 type Direction = 'up' | 'down' | 'left' | 'right';
@@ -505,6 +552,7 @@ class IdleState extends PlayerState {}
 
 class TimedAttackState extends PlayerState {
   duration = 1000;
+  sound = '';
   startTime = Date.now();
   target: Tent;
 
@@ -527,8 +575,20 @@ class TimedAttackState extends PlayerState {
   }
 }
 
-class PissingState extends TimedAttackState {}
+class PissingState extends TimedAttackState {
+  sound = sounds.piss;
+
+  constructor(target: Tent) {
+    super(target);
+    playSound(this.sound);
+  }
+}
 class AttackingState extends TimedAttackState {
+  sound = sounds.smash;
+  constructor(target: Tent) {
+    super(target);
+    playSound(this.sound);
+  }
   atEnd() {
     this.target.doDamage();
   }
@@ -1497,6 +1557,7 @@ class App extends Component<{}, void> {
     this._renderCanvas();
     this._enqueueFrame();
     precacheImageAssets();
+    precacheAudioAssets();
   }
 
   componentDidUpdate() {

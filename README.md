@@ -29,3 +29,14 @@ so you better hurry
 - "I'm making sure to shoot in both horizontal & vertical video formats"
 - "They're air pods not ear pods"
 - "I quit my job to come to this"
+
+
+### todo
+- algo for deciding if a tent is isolated or not
+- tutorial/tour
+- bus
+- pickup respawn
+- sound
+
+
+
