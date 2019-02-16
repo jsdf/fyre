@@ -6,6 +6,7 @@ import React, {Component} from 'react';
 import Vec2d from './Vec2d';
 import EasyStar from 'easystarjs';
 import objectsData from './objects.json';
+import gridData from './grid.json';
 import type {Vec2dInit} from './Vec2d';
 
 type GameObjectInit = {type: string, pos: {x: number, y: number}};
@@ -21,17 +22,23 @@ const DEBUG_OBJECTS = false;
 const DEBUG_AI_TARGETS = false;
 const DEBUG_BBOX = false;
 const DEBUG_PLAYER_STATE = false;
-const DEBUG_PATHFINDING_NODES = false;
-const DEBUG_PATHFINDING_BBOXES = true;
+const DEBUG_PATHFINDING_NODES = true;
+const DEBUG_PATHFINDING_BBOXES = false;
 const DEBUG_PATH_FOLLOWING = false;
 const DEBUG_PATH_FOLLOWING_STUCK = true;
 const DEBUG_AJACENCY = false;
 const DARK = false;
 const DRAW_HUD = true;
 
-const WALKABLE = 0;
-const UNWALKABLE = 1;
-type Walkability = typeof WALKABLE | typeof UNWALKABLE;
+function range(size: number) {
+  return Array(size)
+    .fill(0)
+    .map((_, i) => i);
+}
+
+const [WALKABLE, AI_UNWALKABLE, UNWALKABLE] = range(3);
+
+type Walkability = typeof WALKABLE | typeof AI_UNWALKABLE | typeof UNWALKABLE;
 
 const GRID_START = new Vec2d({x: 20, y: 20});
 const BG_OFFSET = new Vec2d({x: -400, y: -200});
@@ -42,6 +49,19 @@ function toScreenPx(px) {
 
 function last<T>(arr: Array<T>): T {
   return arr[arr.length - 1];
+}
+
+function throttle<T>(fn: (arg: T) => void, time: number): (arg: T) => void {
+  let id = null;
+
+  return (arg: T) => {
+    if (id == null) {
+      fn(arg);
+      id = setTimeout(() => {
+        id = null;
+      }, time);
+    }
+  };
 }
 
 const getImage = (() => {
@@ -795,7 +815,7 @@ function clamp(x, min, max) {
 }
 
 type EditorState =
-  | {mode: 'pathfinding'}
+  | {mode: 'pathfinding', paint: Walkability, brushSize: number}
   | {mode: 'objects', type: Class<GameObject>}
   | {mode: 'play'};
 
@@ -827,10 +847,10 @@ class Game {
     // this._spawnTents();
     // this._spawnBus();
     this.addWorldObject(this.player);
-    this._initTentAdjacencies();
+    // this._initTentAdjacencies();
 
     // this._spawnPowerups();
-    this._startSpawningPeople();
+    // this._startSpawningPeople();
   }
 
   addWorldObject(obj: GameObject) {
@@ -945,22 +965,22 @@ class Game {
         pathCol <= objPathfindingEndPos.x;
         pathCol++
       ) {
-        this.setPathfindingTile({x: pathCol, y: pathRow}, UNWALKABLE);
+        this.setPathfindingTile({x: pathCol, y: pathRow}, AI_UNWALKABLE);
       }
     }
   }
 
   _initPathfinding() {
-    const pathfinding = [];
-    for (let i = 0; i < PATH_GRID_ROWS; i++) {
-      pathfinding[i] = [];
+    // const pathfinding = [];
+    // for (let i = 0; i < PATH_GRID_ROWS; i++) {
+    //   pathfinding[i] = [];
 
-      for (let k = 0; k < PATH_GRID_COLS; k++) {
-        pathfinding[i][k] = WALKABLE;
-      }
-    }
-    this.pathfindingGrid = pathfinding;
-    this.easystar.setGrid(pathfinding);
+    //   for (let k = 0; k < PATH_GRID_COLS; k++) {
+    //     pathfinding[i][k] = WALKABLE;
+    //   }
+    // }
+    this.pathfindingGrid = gridData;
+    this.easystar.setGrid(gridData);
     this.easystar.setAcceptableTiles([WALKABLE]);
     this.easystar.enableDiagonals();
 
@@ -1004,11 +1024,19 @@ class Game {
     const pathfinding = this.pathfindingGrid;
 
     if (!pathfinding) return;
+    if (
+      pathPoint.y < 0 ||
+      pathPoint.y >= pathfinding.length ||
+      pathPoint.x < 0 ||
+      pathPoint.x >= pathfinding[pathPoint.y].length
+    ) {
+      return;
+    }
 
     pathfinding[pathPoint.y][pathPoint.x] =
       setTo == null
         ? pathfinding[pathPoint.y][pathPoint.x] === WALKABLE
-          ? UNWALKABLE
+          ? AI_UNWALKABLE
           : WALKABLE // toggle
         : setTo;
     this.easystar.setGrid(pathfinding);
@@ -1133,7 +1161,10 @@ const renderPathfindingGrid = (
 
         const isBlocked = grid[row][col] == 1;
 
-        const color = isBlocked ? 'red' : 'green';
+        const color =
+          grid[row][col] == WALKABLE
+            ? 'green'
+            : grid[row][col] == AI_UNWALKABLE ? 'red' : 'yellow';
         if (DEBUG_PATHFINDING_NODES) {
           renderPoint(ctx, view, pos, color);
         }
@@ -1505,10 +1536,13 @@ const Hud = (props: {game: Game}) => {
 };
 
 class Editor extends React.Component<{game: Game}> {
+  static cycle<T>(types: Array<T>, prev: T): T {
+    return types[(types.indexOf(prev) + 1) % types.length];
+  }
   _initMode(name: string) {
     switch (name) {
       case 'pathfinding':
-        return {mode: 'pathfinding'};
+        return {mode: 'pathfinding', paint: UNWALKABLE, brushSize: 1};
       case 'objects':
         return {mode: 'objects', type: Tent};
     }
@@ -1520,18 +1554,28 @@ class Editor extends React.Component<{game: Game}> {
     const nextMode = modes[(modes.indexOf(prevMode) + 1) % modes.length];
 
     this.props.game.editor = this._initMode(nextMode);
+    this.forceUpdate();
   };
   _handleObjectTypeChange = () => {
     const {editor} = this.props.game;
-    if (editor.mode !== 'objects') {
-      throw new Error(`wrong mode ${editor.mode}`);
-    }
-    const prevObjectType = editor.type;
-    const types = [Tent, CheeseSandwich, Water, Bus];
-    const nextObjectType =
-      types[(types.indexOf(prevObjectType) + 1) % types.length];
-
-    editor.type = nextObjectType;
+    if (editor.mode !== 'objects') return;
+    editor.type = Editor.cycle([Tent, CheeseSandwich, Water, Bus], editor.type);
+    this.forceUpdate();
+  };
+  _handlePaintChange = () => {
+    const {editor} = this.props.game;
+    if (editor.mode !== 'pathfinding') return;
+    editor.paint = Editor.cycle(
+      [WALKABLE, AI_UNWALKABLE, UNWALKABLE],
+      editor.paint
+    );
+    this.forceUpdate();
+  };
+  _handleBrushSizeChange = () => {
+    const {editor} = this.props.game;
+    if (editor.mode !== 'pathfinding') return;
+    editor.brushSize = Editor.cycle([1, 3, 5], editor.brushSize);
+    this.forceUpdate();
   };
   render() {
     const {editor} = this.props.game;
@@ -1551,6 +1595,27 @@ class Editor extends React.Component<{game: Game}> {
         <div>
           <button onClick={this._handleEditorModeChange}>{editor.mode}</button>
         </div>
+        {editor.mode === 'pathfinding' && (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+            }}
+          >
+            <button onClick={this._handlePaintChange}>
+              walkability:{' '}
+              {editor.paint == WALKABLE
+                ? 'WALKABLE'
+                : editor.paint == AI_UNWALKABLE
+                  ? 'AI_UNWALKABLE'
+                  : 'UNWALKABLE'}
+            </button>
+            <button onClick={this._handleBrushSizeChange}>
+              brushSize: {editor.brushSize}
+            </button>
+          </div>
+        )}
         {editor.mode === 'objects' && (
           <div
             style={{
@@ -1724,8 +1789,9 @@ class App extends Component<{}, void> {
             }
           }
         }
-
-        renderBBox(ctx, this.game.view, obj);
+        if (DEBUG_BBOX) {
+          renderBBox(ctx, this.game.view, obj);
+        }
       });
 
       // render singleton things
@@ -1745,28 +1811,75 @@ class App extends Component<{}, void> {
     }
   }
 
-  _handleClick = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+  _spawnObjectDebounced: (pos: Vec2dInit) => void = throttle(pos => {
+    const {editor} = this.game;
+    if (editor.mode === 'objects') {
+      this.game.spawnObjectOfType({type: editor.type.name, pos});
+    }
+  }, 300);
+
+  _drawStuff(event: SyntheticMouseEvent<HTMLCanvasElement>) {
     const pos = new Vec2d({
       x: Math.floor(this.game.view.fromScreenX(event.pageX / SCALE)),
       y: Math.floor(this.game.view.fromScreenY(event.pageY / SCALE)),
     });
-    switch (this.game.editor.mode) {
+    const {editor} = this.game;
+    switch (editor.mode) {
       case 'pathfinding': {
         const pathPoint = this.game.toPathfindingCoords(pos);
-        this.game.togglePathfindingTile(pathPoint);
+        if (editor.brushSize === 1) {
+          this.game.setPathfindingTile(pathPoint, editor.paint);
+        } else {
+          const halfBrushSize = Math.floor(editor.brushSize / 2);
+
+          for (
+            var x = pathPoint.x - halfBrushSize;
+            x <= pathPoint.x + halfBrushSize;
+            x++
+          ) {
+            for (
+              var y = pathPoint.y - halfBrushSize;
+              y <= pathPoint.y + halfBrushSize;
+              y++
+            ) {
+              this.game.setPathfindingTile({x, y}, editor.paint);
+            }
+          }
+        }
         break;
       }
       case 'objects': {
-        this.game.spawnObjectOfType({type: this.game.editor.type.name, pos});
+        this._spawnObjectDebounced(pos);
       }
     }
+  }
+
+  _handleClick = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+    this._drawStuff(event);
   };
+
+  mouseIsDown = false;
+  _handleMouseDown = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+    this.mouseIsDown = true;
+  };
+  _handleMouseUp = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+    this.mouseIsDown = false;
+  };
+  _handleMouseMove = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+    if (this.mouseIsDown) {
+      this._drawStuff(event);
+    }
+  };
+
   render() {
     return (
       <div className="App">
         <canvas
           ref={this._onCanvas}
           onClick={this._handleClick}
+          onMouseDown={this._handleMouseDown}
+          onMouseUp={this._handleMouseUp}
+          onMouseMove={this._handleMouseMove}
           width={window.innerWidth / 2}
           height={window.innerHeight / 2}
           style={{transform: `scale(${SCALE})`, transformOrigin: 'top left'}}
