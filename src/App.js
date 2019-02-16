@@ -216,21 +216,24 @@ class Tent extends GameObject {
 }
 
 class Powerup extends GameObject {
+  sound = '';
   update(game: Game) {
     this.pos.y += Math.sin(game.frame / 10 + this.id % 10);
   }
   pickedUp(player: Player) {
-    // noop
+    playSound(this.sound);
   }
 }
 
 class Water extends Powerup {
   sprite = assets.water;
+  sound = sounds.pickup1;
   bboxStart = new Vec2d({x: 19, y: 15});
   bboxEnd = new Vec2d({x: 46, y: 43});
   static VALUE = 3;
 
   pickedUp(player: Player) {
+    super.pickedUp(player);
     player.piss = Math.min(player.piss + Water.VALUE, Player.MAX_PISS);
     this.enabled = false;
   }
@@ -238,10 +241,13 @@ class Water extends Powerup {
 
 class CheeseSandwich extends Powerup {
   sprite = assets.cheese;
+
+  sound = sounds.pickup2;
   bboxStart = new Vec2d({x: 20, y: 22});
   bboxEnd = new Vec2d({x: 43, y: 44});
   static VALUE = 3;
   pickedUp(player: Player) {
+    super.pickedUp(player);
     player.energy = Math.min(
       player.energy + CheeseSandwich.VALUE,
       Player.MAX_ENERGY
@@ -320,6 +326,7 @@ class FestivalGoer extends GameObject {
     } else {
       this.enabled = false;
       tent.occupied = true;
+      playSound(sounds.occupy);
     }
   }
 
@@ -556,19 +563,31 @@ class TimedAttackState extends PlayerState {
   startTime = Date.now();
   target: Tent;
 
+  _initialized = false;
+
   constructor(target: Tent) {
     super();
     this.target = target;
   }
 
   update(player: Player): ?PlayerState {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.atStart();
+    }
     if (Date.now() > this.startTime + this.duration) {
       this.atEnd();
       return new IdleState();
     }
   }
 
-  atEnd() {}
+  atStart() {
+    playSound(this.sound);
+  }
+
+  atEnd() {
+    // noop
+  }
 
   toString() {
     return `${this.constructor.name} { target: ${this.target.id} }`;
@@ -577,18 +596,9 @@ class TimedAttackState extends PlayerState {
 
 class PissingState extends TimedAttackState {
   sound = sounds.piss;
-
-  constructor(target: Tent) {
-    super(target);
-    playSound(this.sound);
-  }
 }
 class AttackingState extends TimedAttackState {
   sound = sounds.smash;
-  constructor(target: Tent) {
-    super(target);
-    playSound(this.sound);
-  }
   atEnd() {
     this.target.doDamage();
   }
