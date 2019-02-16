@@ -1010,15 +1010,6 @@ class Game {
           ? UNWALKABLE
           : WALKABLE // toggle
         : setTo;
-
-    console.log(
-      'set',
-      pathPoint.x,
-      pathPoint.y,
-      'to',
-      pathfinding[pathPoint.y][pathPoint.x]
-    );
-
     this.easystar.setGrid(pathfinding);
   }
 
