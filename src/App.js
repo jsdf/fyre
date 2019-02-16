@@ -21,17 +21,19 @@ const PATH_GRID_COLS = 15;
 const PATH_GRID_UNIT_WIDTH = 64;
 const PATH_GRID_UNIT_HEIGHT = 64;
 const SCALE = 2;
-const DEBUG_OBJECTS = false;
+const DEBUG_OBJECTS = true;
 const DEBUG_AI_TARGETS = false;
-const DEBUG_BBOX = false;
-const DEBUG_PLAYER = true;
+const DEBUG_BBOX = true;
+const DEBUG_PLAYER_STATE = false;
 const DEBUG_PATHFINDING_NODES = false;
-const DEBUG_PATHFINDING_BBOXES = true;
+const DEBUG_PATHFINDING_BBOXES = false;
 const DEBUG_PATH_FOLLOWING = false;
 const DEBUG_PATH_FOLLOWING_STUCK = true;
+const DEBUG_AJACENCY = true;
 const VIEWBOX_PADDING_X = 128;
 const VIEWBOX_PADDING_Y = 64;
 const DARK = false;
+const DRAW_HUD = false;
 
 const WALKABLE = 0;
 const UNWALKABLE = 1;
@@ -776,12 +778,14 @@ class Game {
   };
 
   worldObjects: Array<GameObject> = [];
+  worldObjectsByID: Map<number, GameObject> = new Map();
 
   view = new View();
   editor = {mode: 'play'};
 
   easystar = new EasyStar.js();
   pathfindingGrid: ?Array<Array<number>> = null;
+  tentAdjacencies: Map<number, Array<number>> = new Map();
 
   constructor() {
     this._initPathfinding();
@@ -789,10 +793,16 @@ class Game {
 
     // this._spawnTents();
     // this._spawnBus();
-    this.worldObjects.push(this.player);
+    this.addWorldObject(this.player);
+    this._initTentAdjacencies();
 
     // this._spawnPowerups();
-    this._startSpawningPeople();
+    // this._startSpawningPeople();
+  }
+
+  addWorldObject(obj: GameObject) {
+    this.worldObjects.push(obj);
+    this.worldObjectsByID.set(obj.id, obj);
   }
 
   spawnObjectOfType(obj: GameObjectInit) {
@@ -810,13 +820,13 @@ class Game {
   }
 
   _spawnObjects() {
-    objects.forEach(obj => {
+    objects.filter(obj => obj.type == 'Tent').forEach(obj => {
       this.spawnObjectOfType(obj);
     });
   }
 
   _spawnGeneric(pos: Vec2dInit, Class: Class<GameObject>) {
-    this.worldObjects.push(new Class(pos));
+    this.addWorldObject(new Class(pos));
   }
 
   dumpObjects() {
@@ -881,7 +891,7 @@ class Game {
   _spawnBus(pos: Vec2dInit) {
     const bus = new Bus(pos);
 
-    this.worldObjects.push(bus);
+    this.addWorldObject(bus);
   }
 
   _spawnTent(pos: Vec2dInit) {
@@ -889,7 +899,7 @@ class Game {
 
     this._makeObjectBBoxUnwalkable(tent);
 
-    this.worldObjects.push(tent);
+    this.addWorldObject(tent);
   }
 
   _makeObjectBBoxUnwalkable(obj: GameObject) {
@@ -929,6 +939,31 @@ class Game {
     this.easystar.enableDiagonals();
 
     this.easystar.enableSync();
+  }
+
+  _initTentAdjacencies() {
+    const searchArea = new Vec2d({x: 100, y: 100});
+    const tents = typeFilter(this.worldObjects, Tent);
+    class RangeQuery extends GameObject {}
+
+    for (var i = 0; i < tents.length; i++) {
+      // simulate range query using collision system
+      const center = tents[i].getCenter().clone();
+      const range = new RangeQuery(center.sub(searchArea));
+      const adjacencyList = [];
+      this.tentAdjacencies.set(tents[i].id, adjacencyList);
+      range.bboxStart = new Vec2d({x: 0, y: 0});
+      range.bboxEnd = searchArea.clone().multiplyScalar(2);
+
+      for (var k = 0; k < tents.length; k++) {
+        if (
+          i !== k && // ignore self
+          collision(tents[k], range)
+        ) {
+          adjacencyList.push(tents[k].id);
+        }
+      }
+    }
   }
 
   _spawnTents() {
@@ -984,7 +1019,7 @@ class Game {
   }
 
   _spawnPerson() {
-    this.worldObjects.push(new FestivalGoer());
+    this.addWorldObject(new FestivalGoer());
   }
 
   _startSpawningPeople() {
@@ -1015,7 +1050,7 @@ class Game {
           TENT_SPACING_Y * row /*skip*/ +
           TENT_SPACING_Y / 2 /*offset*/,
       };
-      this.worldObjects.push(
+      this.addWorldObject(
         i % 2 == 1 ? new Water(initPos) : new CheeseSandwich(initPos)
       );
     }
@@ -1105,15 +1140,13 @@ const renderBBox = (
   view: View,
   obj: GameObject
 ) => {
-  if (DEBUG_BBOX) {
-    ctx.strokeStyle = 'red';
+  ctx.strokeStyle = 'red';
 
-    const x = Math.floor(view.toScreenX(obj.pos.x + obj.bboxStart.x));
-    const y = Math.floor(view.toScreenY(obj.pos.y + obj.bboxStart.y));
-    const width = Math.floor(obj.bboxEnd.x - obj.bboxStart.x);
-    const height = Math.floor(obj.bboxEnd.y - obj.bboxStart.y);
-    ctx.strokeRect(x, y, width, height);
-  }
+  const x = Math.floor(view.toScreenX(obj.pos.x + obj.bboxStart.x));
+  const y = Math.floor(view.toScreenY(obj.pos.y + obj.bboxStart.y));
+  const width = Math.floor(obj.bboxEnd.x - obj.bboxStart.x);
+  const height = Math.floor(obj.bboxEnd.y - obj.bboxStart.y);
+  ctx.strokeRect(x, y, width, height);
 };
 
 const renderPoint = (
@@ -1233,13 +1266,11 @@ const renderFestivalGoerImage = (
     ctx.font = '10px monospace';
     ctx.fillStyle = 'black';
     ctx.fillText(
-      String(person.id),
+      person.constructor.name + String(person.id),
       view.toScreenX(person.pos.x),
       view.toScreenY(person.pos.y)
     );
   }
-
-  renderBBox(ctx, view, person);
 };
 
 const renderTilesInView = (ctx: CanvasRenderingContext2D, view: View) => {
@@ -1317,33 +1348,70 @@ const renderPissStream = (
   }
 };
 
+const renderDebugLine = (
+  ctx: CanvasRenderingContext2D,
+  view: View,
+  from: Vec2d,
+  to: Vec2d
+) => {
+  ctx.strokeStyle = 'blue';
+  ctx.beginPath();
+  ctx.moveTo(view.toScreenX(from.x), view.toScreenY(from.y));
+  // ctx.lineTo(view.toScreenX(to.x), view.toScreenY(to.y));
+  ctx.bezierCurveTo(
+    view.toScreenX(from.x + (to.x - from.x) * 0.25),
+    view.toScreenY(from.y - 20),
+    view.toScreenX(to.x),
+    view.toScreenY(to.y - 20),
+    view.toScreenX(to.x),
+    view.toScreenY(to.y)
+  );
+  ctx.stroke();
+
+  // tip
+  ctx.strokeStyle = 'purple';
+
+  ctx.beginPath();
+
+  ctx.moveTo(view.toScreenX(to.x), view.toScreenY(to.y));
+
+  const reverseLine = to.clone().add(to.directionTo(from).scale(5));
+  ctx.lineTo(
+    Math.floor(view.toScreenX(reverseLine.x)),
+    Math.floor(view.toScreenY(reverseLine.y))
+  );
+  ctx.stroke();
+};
+
 const renderObjectImage = (
   ctx: CanvasRenderingContext2D,
   view: View,
   obj: GameObject
 ) => {
   const image = getImage(obj.sprite);
-  if (!image) return;
-
-  ctx.drawImage(
-    image,
-    view.toScreenX(Math.floor(obj.pos.x)),
-    view.toScreenY(Math.floor(obj.pos.y)),
-    image.width,
-    image.height
-  );
+  if (image) {
+    ctx.drawImage(
+      image,
+      view.toScreenX(Math.floor(obj.pos.x)),
+      view.toScreenY(Math.floor(obj.pos.y)),
+      image.width,
+      image.height
+    );
+  }
 
   if (DEBUG_OBJECTS) {
     ctx.font = '10px monospace';
     ctx.fillStyle = 'black';
     ctx.fillText(
-      String(obj.id),
+      obj.constructor.name + String(obj.id),
       view.toScreenX(obj.pos.x),
       view.toScreenY(obj.pos.y)
     );
+    renderPoint(ctx, view, obj.getCenter(), 'orange');
   }
-
-  renderBBox(ctx, view, obj);
+  if (DEBUG_BBOX) {
+    renderBBox(ctx, view, obj);
+  }
 };
 
 const renderImage = (
@@ -1459,7 +1527,7 @@ const Hud = (props: {game: Game}) => {
         {props.game.player.score}
       </div>
       <pre>
-        {DEBUG_PLAYER &&
+        {DEBUG_PLAYER_STATE &&
           JSON.stringify(
             {
               player: {
@@ -1556,6 +1624,7 @@ class App extends Component<{}, void> {
   game = new Game();
   componentDidMount() {
     window.game = this.game;
+    window.renderer = this;
     document.addEventListener('keydown', (event: KeyboardEvent) =>
       this._handleKey(event, true)
     );
@@ -1686,9 +1755,29 @@ class App extends Component<{}, void> {
               }
             }
           }
+        } else if (obj instanceof Tent) {
+          if (DEBUG_AJACENCY) {
+            const adjacencies = this.game.tentAdjacencies.get(obj.id);
+            if (adjacencies) {
+              for (var i = 0; i < adjacencies.length; i++) {
+                const adjacent = this.game.worldObjectsByID.get(adjacencies[i]);
+                if (adjacent) {
+                  renderDebugLine(
+                    ctx,
+                    this.game.view,
+                    obj.getCenter(),
+                    adjacent.getCenter()
+                  );
+                }
+              }
+            }
+          }
         }
+
+        renderBBox(ctx, this.game.view, obj);
       });
 
+      // render singleton things
       const playerState = this.game.player.state;
 
       if (playerState instanceof PissingState) {
@@ -1733,7 +1822,7 @@ class App extends Component<{}, void> {
           className="sprite"
         />
 
-        <Hud game={this.game} />
+        {DRAW_HUD && <Hud game={this.game} />}
         <Editor game={this.game} />
       </div>
     );

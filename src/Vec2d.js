@@ -44,6 +44,12 @@ export default class Vec2d {
     return this;
   }
 
+  subScalar(scalar: number) {
+    this.x -= scalar;
+    this.y -= scalar;
+    return this;
+  }
+
   multiplyScalar(scalar: number) {
     this.x *= scalar;
     this.y *= scalar;
@@ -54,6 +60,10 @@ export default class Vec2d {
     this.x /= scalar;
     this.y /= scalar;
     return this;
+  }
+
+  scale(scale: number) {
+    return this.multiplyScalar(scale);
   }
 
   distanceTo(other: Vec2dInit) {
