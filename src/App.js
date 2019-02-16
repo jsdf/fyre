@@ -845,7 +845,6 @@ class Game {
     this._spawnObjects();
 
     // this._spawnTents();
-    // this._spawnBus();
     this.addWorldObject(this.player);
     // this._initTentAdjacencies();
 
@@ -858,12 +857,12 @@ class Game {
     this.worldObjectsByID.set(obj.id, obj);
   }
 
-  spawnObjectOfType(obj: GameObjectInit) {
+  spawnObjectOfType(obj: GameObjectInit): GameObject {
     switch (obj.type) {
       case 'Tent':
-        return this._spawnTent(obj.pos);
+        return this._spawnGeneric(obj.pos, Tent);
       case 'Bus':
-        return this._spawnBus(obj.pos);
+        return this._spawnGeneric(obj.pos, Bus);
       case 'CheeseSandwich':
         return this._spawnGeneric(obj.pos, CheeseSandwich);
       case 'Water':
@@ -876,10 +875,16 @@ class Game {
     objects.forEach(obj => {
       this.spawnObjectOfType(obj);
     });
+
+    typeFilter(this.worldObjects, Tent).forEach(obj => {
+      this._makeObjectBBoxUnwalkable(obj);
+    });
   }
 
   _spawnGeneric(pos: Vec2dInit, Class: Class<GameObject>) {
-    this.addWorldObject(new Class(pos));
+    const obj = new Class(pos);
+    this.addWorldObject(obj);
+    return obj;
   }
 
   dumpObjects() {
@@ -932,20 +937,6 @@ class Game {
     pos.x = Game.PATH_GRID_OFFSET.x + (point.x + 0.5) * gridItemWidth;
     pos.y = Game.PATH_GRID_OFFSET.y + (point.y + 0.5) * gridItemHeight;
     return pos;
-  }
-
-  _spawnBus(pos: Vec2dInit) {
-    const bus = new Bus(pos);
-
-    this.addWorldObject(bus);
-  }
-
-  _spawnTent(pos: Vec2dInit) {
-    const tent = new Tent(pos);
-
-    this._makeObjectBBoxUnwalkable(tent);
-
-    this.addWorldObject(tent);
   }
 
   _makeObjectBBoxUnwalkable(obj: GameObject) {
@@ -1814,7 +1805,15 @@ class App extends Component<{}, void> {
   _spawnObjectDebounced: (pos: Vec2dInit) => void = throttle(pos => {
     const {editor} = this.game;
     if (editor.mode === 'objects') {
-      this.game.spawnObjectOfType({type: editor.type.name, pos});
+      const obj = this.game.spawnObjectOfType({type: editor.type.name, pos});
+
+      // center on mouse click
+      obj.pos.sub(
+        obj
+          .getCenter()
+          .clone()
+          .sub(obj.pos)
+      );
     }
   }, 300);
 
