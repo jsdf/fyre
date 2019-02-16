@@ -12,24 +12,20 @@ type GameObjectInit = {type: string, pos: {x: number, y: number}};
 
 const objects: Array<GameObjectInit> = objectsData;
 
-const TENT_ROWS = 5;
-const TENT_COLS = 10;
-const TENT_SPACING_X = 96;
-const TENT_SPACING_Y = 64;
 const PATH_GRID_ROWS = 5;
 const PATH_GRID_COLS = 15;
 const PATH_GRID_UNIT_WIDTH = 64;
 const PATH_GRID_UNIT_HEIGHT = 64;
 const SCALE = 2;
-const DEBUG_OBJECTS = true;
+const DEBUG_OBJECTS = false;
 const DEBUG_AI_TARGETS = false;
-const DEBUG_BBOX = true;
+const DEBUG_BBOX = false;
 const DEBUG_PLAYER_STATE = false;
 const DEBUG_PATHFINDING_NODES = false;
-const DEBUG_PATHFINDING_BBOXES = false;
+const DEBUG_PATHFINDING_BBOXES = true;
 const DEBUG_PATH_FOLLOWING = false;
 const DEBUG_PATH_FOLLOWING_STUCK = true;
-const DEBUG_AJACENCY = true;
+const DEBUG_AJACENCY = false;
 const VIEWBOX_PADDING_X = 128;
 const VIEWBOX_PADDING_Y = 64;
 const DARK = false;
@@ -39,8 +35,8 @@ const WALKABLE = 0;
 const UNWALKABLE = 1;
 type Walkability = typeof WALKABLE | typeof UNWALKABLE;
 
-const TENT_START_POS = new Vec2d({x: 20, y: 20});
-const BG_OFFSET = new Vec2d({x: -400, y: -800});
+const GRID_START = new Vec2d({x: 20, y: 20});
+const BG_OFFSET = new Vec2d({x: -400, y: -200});
 
 function toScreenPx(px) {
   return px * SCALE;
@@ -850,10 +846,10 @@ class Game {
 
   static PATH_GRID_MUL = 5;
   static PATH_GRID_TENT_SIZE = 4;
-  static PATH_GRID_OFFSET = TENT_START_POS.clone().add(
+  static PATH_GRID_OFFSET = GRID_START.clone().add(
     new Vec2d({
-      x: 0, //TENT_SPACING_X / Game.PATH_GRID_MUL / 2,
-      y: TENT_SPACING_Y / Game.PATH_GRID_MUL / 2,
+      x: 0,
+      y: 0,
     })
   );
 
@@ -966,27 +962,6 @@ class Game {
     }
   }
 
-  _spawnTents() {
-    for (var i = 0; i < TENT_COLS * TENT_ROWS; i++) {
-      const col = i % TENT_COLS;
-      const row = Math.floor(i / TENT_COLS);
-
-      const randomnessInv = 6;
-      const pos = new Vec2d({
-        x:
-          TENT_START_POS.x +
-          col * TENT_SPACING_X +
-          Math.floor(Math.random() * TENT_SPACING_X / randomnessInv),
-        y:
-          TENT_START_POS.y +
-          row * TENT_SPACING_Y +
-          Math.floor(Math.random() * TENT_SPACING_Y / randomnessInv),
-      });
-
-      this._spawnTent(pos);
-    }
-  }
-
   togglePathfindingTile(pathPoint: {x: number, y: number}) {
     this._setPathfindingTile(pathPoint);
   }
@@ -1033,27 +1008,6 @@ class Game {
       this._spawnPerson();
       this._spawnPerson();
     }, 5000);
-  }
-
-  _spawnPowerups() {
-    for (var i = 0; i < 4; i++) {
-      const idx = i * 7; // skip
-      const col = idx % TENT_COLS;
-      const row = Math.floor(idx / TENT_COLS);
-      const initPos = {
-        x:
-          TENT_START_POS.x +
-          TENT_SPACING_X * col /*skip*/ +
-          TENT_SPACING_X / 2 /*offset*/,
-        y:
-          TENT_START_POS.y +
-          TENT_SPACING_Y * row /*skip*/ +
-          TENT_SPACING_Y / 2 /*offset*/,
-      };
-      this.addWorldObject(
-        i % 2 == 1 ? new Water(initPos) : new CheeseSandwich(initPos)
-      );
-    }
   }
 
   update() {
