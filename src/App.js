@@ -12,10 +12,10 @@ type GameObjectInit = {type: string, pos: {x: number, y: number}};
 
 const objects: Array<GameObjectInit> = objectsData;
 
-const PATH_GRID_ROWS = 5;
-const PATH_GRID_COLS = 15;
-const PATH_GRID_UNIT_WIDTH = 64;
-const PATH_GRID_UNIT_HEIGHT = 64;
+const PATH_GRID_ROWS = 17 * 5;
+const PATH_GRID_COLS = 18 * 5;
+const PATH_GRID_UNIT_WIDTH = 64 / 5;
+const PATH_GRID_UNIT_HEIGHT = 64 / 5;
 const SCALE = 2;
 const DEBUG_OBJECTS = false;
 const DEBUG_AI_TARGETS = false;
@@ -27,7 +27,7 @@ const DEBUG_PATH_FOLLOWING = false;
 const DEBUG_PATH_FOLLOWING_STUCK = true;
 const DEBUG_AJACENCY = false;
 const DARK = false;
-const DRAW_HUD = false;
+const DRAW_HUD = true;
 
 const WALKABLE = 0;
 const UNWALKABLE = 1;
@@ -414,7 +414,7 @@ class FestivalGoer extends GameObject {
       console.error('pathfinding: end is unwalkable');
       return;
     }
-
+    let startTime = performance.now();
     try {
       game.easystar.findPath(start.x, start.y, end.x, end.y, gridPath => {
         if (gridPath === null) {
@@ -444,6 +444,14 @@ class FestivalGoer extends GameObject {
             } else {
               this.isPathfinding = false;
             }
+
+            console.log(
+              'pathfinding for ',
+              this.id,
+              'took',
+              (performance.now() - startTime).toFixed(2),
+              'ms'
+            );
           }
         }
       });
@@ -822,7 +830,7 @@ class Game {
     this._initTentAdjacencies();
 
     // this._spawnPowerups();
-    // this._startSpawningPeople();
+    this._startSpawningPeople();
   }
 
   addWorldObject(obj: GameObject) {
@@ -845,7 +853,7 @@ class Game {
   }
 
   _spawnObjects() {
-    objects.filter(obj => obj.type == 'Tent').forEach(obj => {
+    objects.forEach(obj => {
       this.spawnObjectOfType(obj);
     });
   }
@@ -873,7 +881,6 @@ class Game {
     );
   }
 
-  static PATH_GRID_MUL = 5;
   static PATH_GRID_TENT_SIZE = 4;
   static PATH_GRID_OFFSET = GRID_START.clone().add(
     new Vec2d({
@@ -884,20 +891,14 @@ class Game {
 
   toPathfindingCoords(pos: Vec2d) {
     const x = clamp(
-      Math.floor(
-        (pos.x - Game.PATH_GRID_OFFSET.x) /
-          (PATH_GRID_UNIT_WIDTH / Game.PATH_GRID_MUL)
-      ),
+      Math.floor((pos.x - Game.PATH_GRID_OFFSET.x) / PATH_GRID_UNIT_WIDTH),
       0,
-      PATH_GRID_COLS * Game.PATH_GRID_MUL - 1
+      PATH_GRID_COLS - 1
     );
     const y = clamp(
-      Math.floor(
-        (pos.y - Game.PATH_GRID_OFFSET.y) /
-          (PATH_GRID_UNIT_HEIGHT / Game.PATH_GRID_MUL)
-      ),
+      Math.floor((pos.y - Game.PATH_GRID_OFFSET.y) / PATH_GRID_UNIT_HEIGHT),
       0,
-      PATH_GRID_ROWS * Game.PATH_GRID_MUL - 1
+      PATH_GRID_ROWS - 1
     );
     if (Number.isNaN(x) || Number.isNaN(y)) {
       debugger;
@@ -906,8 +907,8 @@ class Game {
   }
   fromPathfindingCoords(point: {x: number, y: number}) {
     const pos = new Vec2d();
-    const gridItemWidth = PATH_GRID_UNIT_WIDTH / Game.PATH_GRID_MUL;
-    const gridItemHeight = PATH_GRID_UNIT_HEIGHT / Game.PATH_GRID_MUL;
+    const gridItemWidth = PATH_GRID_UNIT_WIDTH;
+    const gridItemHeight = PATH_GRID_UNIT_HEIGHT;
     pos.x = Game.PATH_GRID_OFFSET.x + (point.x + 0.5) * gridItemWidth;
     pos.y = Game.PATH_GRID_OFFSET.y + (point.y + 0.5) * gridItemHeight;
     return pos;
@@ -951,10 +952,10 @@ class Game {
 
   _initPathfinding() {
     const pathfinding = [];
-    for (let i = 0; i < PATH_GRID_ROWS * Game.PATH_GRID_MUL; i++) {
+    for (let i = 0; i < PATH_GRID_ROWS; i++) {
       pathfinding[i] = [];
 
-      for (let k = 0; k < PATH_GRID_COLS * Game.PATH_GRID_MUL; k++) {
+      for (let k = 0; k < PATH_GRID_COLS; k++) {
         pathfinding[i][k] = WALKABLE;
       }
     }
@@ -1123,8 +1124,8 @@ const renderPathfindingGrid = (
     if (!game.pathfindingGrid) return;
     const grid = game.pathfindingGrid;
 
-    const width = Math.floor(PATH_GRID_UNIT_WIDTH / Game.PATH_GRID_MUL);
-    const height = Math.floor(PATH_GRID_UNIT_HEIGHT / Game.PATH_GRID_MUL);
+    const width = Math.floor(PATH_GRID_UNIT_WIDTH);
+    const height = Math.floor(PATH_GRID_UNIT_HEIGHT);
     for (let row = 0; row < grid.length; row++) {
       for (let col = 0; col < grid[row].length; col++) {
         const pos = game.fromPathfindingCoords({x: col, y: row});
@@ -1690,7 +1691,7 @@ class App extends Component<{}, void> {
 
                 renderPoint(ctx, this.game.view, dest, 'blue');
 
-                renderPissStream(ctx, this.game.view, lastPoint, dest);
+                renderDebugLine(ctx, this.game.view, lastPoint, dest);
                 lastPoint = path.points[i];
               }
             }
@@ -1701,7 +1702,7 @@ class App extends Component<{}, void> {
               if (dest) {
                 renderPoint(ctx, this.game.view, dest, 'blue');
 
-                renderPissStream(ctx, this.game.view, obj.getCenter(), dest);
+                renderDebugLine(ctx, this.game.view, obj.getCenter(), dest);
               }
             }
           }
