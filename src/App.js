@@ -26,8 +26,6 @@ const DEBUG_PATHFINDING_BBOXES = true;
 const DEBUG_PATH_FOLLOWING = false;
 const DEBUG_PATH_FOLLOWING_STUCK = true;
 const DEBUG_AJACENCY = false;
-const VIEWBOX_PADDING_X = 128;
-const VIEWBOX_PADDING_Y = 64;
 const DARK = false;
 const DRAW_HUD = false;
 
@@ -722,6 +720,8 @@ function collision(a: GameObject, b: GameObject) {
 }
 
 class View {
+  static VIEWBOX_PADDING_X = 128;
+  static VIEWBOX_PADDING_Y = 64;
   offset = new Vec2d();
   toScreenX(x: number) {
     return x - this.offset.x;
@@ -735,22 +735,51 @@ class View {
   fromScreenY(y: number) {
     return y + this.offset.y;
   }
-}
 
-function calculateViewAdjustment(
-  offset,
-  paddingSizeForDimension,
-  viewportSizeForDimension,
-  playerPosForDimension
-) {
-  const boxMinAbs = offset + paddingSizeForDimension;
-  const boxMaxAbs = offset + viewportSizeForDimension - paddingSizeForDimension;
+  update(playerPos: Vec2d, viewWidth: number, viewHeight: number) {
+    this.offset.x += View.calculateViewAdjustmentForDimension(
+      this.offset.x,
+      View.VIEWBOX_PADDING_X,
+      viewWidth,
+      playerPos.x
+    );
+    this.offset.y += View.calculateViewAdjustmentForDimension(
+      this.offset.y,
+      View.VIEWBOX_PADDING_Y,
+      viewHeight,
+      playerPos.y
+    );
+  }
 
-  const deltaMin = Math.min(playerPosForDimension - boxMinAbs, 0);
-  const deltaMax = -Math.min(boxMaxAbs - playerPosForDimension, 0);
+  static calculateViewAdjustmentForDimension(
+    // arguments are scalar values along the relevant dimension
+    offset: number,
+    paddingSize: number,
+    viewportSize: number,
+    playerPos: number
+  ) {
+    /*
+        plr
+      box|
+   scr | |
+    |  | |   
+    v  v |   
+    |  | v   
+    |  | x   
+ 
+    boxAbs = scrOff+boxRel
+    if (plr - boxAbs < 0), scrOff -= plr - boxAbs
+     */
 
-  const delta = deltaMin === 0 ? deltaMax : deltaMin;
-  return delta;
+    const boxMinAbs = offset + paddingSize;
+    const boxMaxAbs = offset + viewportSize - paddingSize;
+
+    const deltaMin = Math.min(playerPos - boxMinAbs, 0);
+    const deltaMax = -Math.min(boxMaxAbs - playerPos, 0);
+
+    const delta = deltaMin === 0 ? deltaMax : deltaMin;
+    return delta;
+  }
 }
 
 function clamp(x, min, max) {
@@ -1019,34 +1048,10 @@ class Game {
   }
 
   _updateViewOffset() {
-    /*
-        plr
-      box|
-   scr | |
-    |  | |   
-    v  v |   
-    |  | v   
-    |  | x   
- 
-    boxAbs = scrOff+boxRel
-    if (plr - boxAbs < 0), scrOff -= plr - boxAbs
-     */
-
     const viewWidth = window.innerWidth / SCALE;
     const viewHeight = window.innerHeight / SCALE;
 
-    this.view.offset.x += calculateViewAdjustment(
-      this.view.offset.x,
-      VIEWBOX_PADDING_X,
-      viewWidth,
-      this.player.pos.x
-    );
-    this.view.offset.y += calculateViewAdjustment(
-      this.view.offset.y,
-      VIEWBOX_PADDING_Y,
-      viewHeight,
-      this.player.pos.y
-    );
+    this.view.update(this.player.pos, viewWidth, viewHeight);
   }
 
   _detectCollisions() {
