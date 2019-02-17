@@ -26,9 +26,11 @@ const DEBUG_PATHFINDING_NODES = true;
 const DEBUG_PATHFINDING_BBOXES = false;
 const DEBUG_PATH_FOLLOWING = false;
 const DEBUG_PATH_FOLLOWING_STUCK = true;
-const DEBUG_AJACENCY = false;
+const DEBUG_AJACENCY = true;
 const DARK = false;
 const DRAW_HUD = true;
+const SOUND_VOLUME = 0;
+const TENT_ADJACENCY_RADIUS = 100;
 
 function range(size: number) {
   return Array(size)
@@ -126,7 +128,7 @@ function playSound(url: string) {
   const sound = getSound(url);
   if (sound) {
     sound.play();
-    sound.volume = 0.5;
+    sound.volume = SOUND_VOLUME;
   } else {
     console.error('sound not ready', JSON.stringify(url));
   }
@@ -814,11 +816,6 @@ function clamp(x, min, max) {
   return Math.max(Math.min(x, max), min);
 }
 
-type EditorState =
-  | {mode: 'pathfinding', paint: Walkability, brushSize: number}
-  | {mode: 'objects', type: Class<GameObject>}
-  | {mode: 'play'};
-
 class Game {
   frame = 0;
   player = new Player();
@@ -834,7 +831,6 @@ class Game {
   worldObjectsByID: Map<number, GameObject> = new Map();
 
   view = new View();
-  editor = {mode: 'play'};
 
   easystar = new EasyStar.js();
   pathfindingGrid: ?Array<Array<number>> = null;
@@ -844,17 +840,25 @@ class Game {
     this._initPathfinding();
     this._spawnObjects();
 
-    // this._spawnTents();
     this.addWorldObject(this.player);
-    // this._initTentAdjacencies();
+    this.initTentAdjacencies();
 
-    // this._spawnPowerups();
     // this._startSpawningPeople();
   }
 
   addWorldObject(obj: GameObject) {
     this.worldObjects.push(obj);
     this.worldObjectsByID.set(obj.id, obj);
+  }
+
+  removeWorldObject(obj: GameObject) {
+    const index = this.worldObjects.indexOf(obj);
+    if (index > -1) {
+      this.worldObjects.splice(index, 1);
+      this.worldObjectsByID.delete(obj.id);
+    } else {
+      throw new Error(`couldn't find obj id=${obj.id} in worldObjects`);
+    }
   }
 
   spawnObjectOfType(obj: GameObjectInit): GameObject {
@@ -978,29 +982,47 @@ class Game {
     this.easystar.enableSync();
   }
 
-  _initTentAdjacencies() {
-    const searchArea = new Vec2d({x: 100, y: 100});
+  initTentAdjacencies() {
     const tents = typeFilter(this.worldObjects, Tent);
-    class RangeQuery extends GameObject {}
+    const tentAdjacencies = new Map();
+
+    // const searchArea = new Vec2d({x: 100, y: 100});
+    // class RangeQuery extends GameObject {}
+    // for (var i = 0; i < tents.length; i++) {
+    //   // simulate range query using collision system
+    //   const center = tents[i].getCenter().clone();
+    //   const range = new RangeQuery(center.sub(searchArea));
+    //   const adjacencyList = [];
+    //   tentAdjacencies.set(tents[i].id, adjacencyList);
+    //   range.bboxStart = new Vec2d({x: 0, y: 0});
+    //   range.bboxEnd = searchArea.clone().multiplyScalar(2);
+
+    //   for (var k = 0; k < tents.length; k++) {
+    //     if (
+    //       i !== k && // ignore self
+    //       collision(tents[k], range)
+    //     ) {
+    //       adjacencyList.push(tents[k].id);
+    //     }
+    //   }
+    // }
 
     for (var i = 0; i < tents.length; i++) {
-      // simulate range query using collision system
-      const center = tents[i].getCenter().clone();
-      const range = new RangeQuery(center.sub(searchArea));
+      const center = tents[i].getCenter();
       const adjacencyList = [];
-      this.tentAdjacencies.set(tents[i].id, adjacencyList);
-      range.bboxStart = new Vec2d({x: 0, y: 0});
-      range.bboxEnd = searchArea.clone().multiplyScalar(2);
+      tentAdjacencies.set(tents[i].id, adjacencyList);
 
       for (var k = 0; k < tents.length; k++) {
         if (
           i !== k && // ignore self
-          collision(tents[k], range)
+          tents[k].getCenter().distanceTo(center) <= TENT_ADJACENCY_RADIUS
         ) {
           adjacencyList.push(tents[k].id);
         }
       }
     }
+
+    this.tentAdjacencies = tentAdjacencies;
   }
 
   togglePathfindingTile(pathPoint: {x: number, y: number}) {
@@ -1356,6 +1378,24 @@ const renderDebugLine = (
   ctx.stroke();
 };
 
+const renderDebugCircle = (
+  ctx: CanvasRenderingContext2D,
+  view: View,
+  pos: Vec2d,
+  radius: number
+) => {
+  ctx.strokeStyle = 'red';
+  ctx.beginPath();
+  ctx.arc(
+    Math.floor(view.toScreenX(pos.x)),
+    Math.floor(view.toScreenY(pos.y)),
+    radius,
+    0, // startAngle
+    2 * Math.PI // endAngle
+  );
+  ctx.stroke();
+};
+
 const renderObjectImage = (
   ctx: CanvasRenderingContext2D,
   view: View,
@@ -1526,51 +1566,152 @@ const Hud = (props: {game: Game}) => {
   );
 };
 
-class Editor extends React.Component<{game: Game}> {
+type EditorObjectsModeCommand = {
+  description: string,
+  undo: () => void,
+};
+type EditorModeState =
+  | {|mode: 'pathfinding', paint: Walkability, brushSize: number|}
+  | {|
+      mode: 'objects',
+      type: Class<GameObject>,
+      history: Array<EditorObjectsModeCommand>,
+    |}
+  | {|mode: 'play'|};
+
+class Editor extends React.Component<
+  {game: Game},
+  {modeState: EditorModeState}
+> {
   static cycle<T>(types: Array<T>, prev: T): T {
     return types[(types.indexOf(prev) + 1) % types.length];
   }
-  _initMode(name: string) {
+  state = {modeState: {mode: 'play'}};
+
+  _spawnObjectDebounced: (pos: Vec2dInit) => void = throttle(pos => {
+    const game = this.props.game;
+    const state = this.getModeState();
+    if (state.mode !== 'objects') return;
+    const obj = game.spawnObjectOfType({type: state.type.name, pos});
+
+    // center on mouse click
+    obj.pos.sub(
+      obj
+        .getCenter()
+        .clone()
+        .sub(obj.pos)
+    );
+
+    const history = state.history;
+
+    this.updateModeState({
+      ...state,
+      history: state.history.concat({
+        description: `add ${obj.constructor.name} ${obj.id}`,
+        undo: () => {
+          game.removeWorldObject(obj);
+        },
+      }),
+    });
+  }, 300);
+
+  drawStuff(pos: Vec2d) {
+    const game = this.props.game;
+    const state = this.getModeState();
+    switch (state.mode) {
+      case 'pathfinding': {
+        const pathPoint = game.toPathfindingCoords(pos);
+        if (state.brushSize === 1) {
+          game.setPathfindingTile(pathPoint, state.paint);
+        } else {
+          const halfBrushSize = Math.floor(state.brushSize / 2);
+
+          for (
+            var x = pathPoint.x - halfBrushSize;
+            x <= pathPoint.x + halfBrushSize;
+            x++
+          ) {
+            for (
+              var y = pathPoint.y - halfBrushSize;
+              y <= pathPoint.y + halfBrushSize;
+              y++
+            ) {
+              game.setPathfindingTile({x, y}, state.paint);
+            }
+          }
+        }
+        break;
+      }
+      case 'objects': {
+        this._spawnObjectDebounced(pos);
+      }
+    }
+  }
+  _initMode(name: string): EditorModeState {
     switch (name) {
       case 'pathfinding':
         return {mode: 'pathfinding', paint: UNWALKABLE, brushSize: 1};
       case 'objects':
-        return {mode: 'objects', type: Tent};
+        return {mode: 'objects', type: Tent, history: []};
     }
     return {mode: 'play'};
   }
+  getModeState(): EditorModeState {
+    return this.state.modeState;
+  }
+  updateModeState(nextState: EditorModeState) {
+    this.setState({modeState: nextState});
+  }
   _handleEditorModeChange = () => {
-    const prevMode = this.props.game.editor.mode;
+    const state = this.getModeState();
+    const prevMode = state.mode;
     const modes = ['pathfinding', 'objects', 'play'];
     const nextMode = modes[(modes.indexOf(prevMode) + 1) % modes.length];
 
-    this.props.game.editor = this._initMode(nextMode);
-    this.forceUpdate();
+    this.updateModeState(this._initMode(nextMode));
   };
   _handleObjectTypeChange = () => {
-    const {editor} = this.props.game;
-    if (editor.mode !== 'objects') return;
-    editor.type = Editor.cycle([Tent, CheeseSandwich, Water, Bus], editor.type);
-    this.forceUpdate();
+    const state = this.getModeState();
+    if (state.mode !== 'objects') return;
+    this.updateModeState({
+      ...state,
+      type: Editor.cycle([Tent, CheeseSandwich, Water, Bus], state.type),
+    });
   };
   _handlePaintChange = () => {
-    const {editor} = this.props.game;
-    if (editor.mode !== 'pathfinding') return;
-    editor.paint = Editor.cycle(
-      [WALKABLE, AI_UNWALKABLE, UNWALKABLE],
-      editor.paint
-    );
-    this.forceUpdate();
+    const state = this.getModeState();
+    if (state.mode !== 'pathfinding') return;
+    this.updateModeState({
+      ...state,
+      paint: Editor.cycle([WALKABLE, AI_UNWALKABLE, UNWALKABLE], state.paint),
+    });
   };
   _handleBrushSizeChange = () => {
-    const {editor} = this.props.game;
-    if (editor.mode !== 'pathfinding') return;
-    editor.brushSize = Editor.cycle([1, 3, 5], editor.brushSize);
-    this.forceUpdate();
+    const state = this.getModeState();
+    if (state.mode !== 'pathfinding') return;
+    this.updateModeState({
+      ...state,
+      brushSize: Editor.cycle([1, 3, 5], state.brushSize),
+    });
+  };
+  _handleUndo = () => {
+    const state = this.getModeState();
+    if (state.mode !== 'objects') return;
+    const lastItem = last(state.history);
+
+    if (lastItem) {
+      lastItem.undo();
+      this.updateModeState({
+        ...state,
+        history: state.history.filter(item => item !== lastItem),
+      });
+    }
+  };
+  _handleInitAdjacency = () => {
+    this.props.game.initTentAdjacencies();
   };
   render() {
-    const {editor} = this.props.game;
-
+    const state = this.getModeState();
     return (
       <div
         style={{
@@ -1584,9 +1725,9 @@ class Editor extends React.Component<{game: Game}> {
         }}
       >
         <div>
-          <button onClick={this._handleEditorModeChange}>{editor.mode}</button>
+          <button onClick={this._handleEditorModeChange}>{state.mode}</button>
         </div>
-        {editor.mode === 'pathfinding' && (
+        {state.mode === 'pathfinding' && (
           <div
             style={{
               display: 'flex',
@@ -1596,30 +1737,52 @@ class Editor extends React.Component<{game: Game}> {
           >
             <button onClick={this._handlePaintChange}>
               walkability:{' '}
-              {editor.paint == WALKABLE
+              {state.paint == WALKABLE
                 ? 'WALKABLE'
-                : editor.paint == AI_UNWALKABLE
-                  ? 'AI_UNWALKABLE'
-                  : 'UNWALKABLE'}
+                : state.paint == AI_UNWALKABLE ? 'AI_UNWALKABLE' : 'UNWALKABLE'}
             </button>
             <button onClick={this._handleBrushSizeChange}>
-              brushSize: {editor.brushSize}
+              brushSize: {state.brushSize}
             </button>
           </div>
         )}
-        {editor.mode === 'objects' && (
+        {state.mode === 'objects' && (
           <div
             style={{
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'flex-end',
             }}
-            onClick={this._handleObjectTypeChange}
           >
-            <div>{editor.type.name}</div>
             <div>
-              <img src={new editor.type().sprite} />
+              <button onClick={this._handleUndo}>
+                undo{' '}
+                {last(state.history)
+                  ? last(state.history).description
+                  : '[none]'}
+              </button>
             </div>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-end',
+              }}
+              onClick={this._handleObjectTypeChange}
+            >
+              <div>{state.type.name}</div>
+              <div>
+                <img src={new state.type().sprite} />
+              </div>
+            </div>
+
+            {state.type.name === 'Tent' && (
+              <div>
+                <button onClick={this._handleInitAdjacency}>
+                  recalc tent adjacencies
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1628,7 +1791,10 @@ class Editor extends React.Component<{game: Game}> {
 }
 
 class App extends Component<{}, void> {
-  game = new Game();
+  game: Game = new Game();
+  _canvas: ?HTMLCanvasElement = null;
+  mouseIsDown = false;
+  editor: ?Editor = null;
   componentDidMount() {
     window.game = this.game;
     window.renderer = this;
@@ -1691,7 +1857,6 @@ class App extends Component<{}, void> {
     this.game.update();
   }
 
-  _canvas: ?HTMLCanvasElement = null;
   _onCanvas = (canvas: ?HTMLCanvasElement) => {
     this._canvas = canvas;
   };
@@ -1764,6 +1929,13 @@ class App extends Component<{}, void> {
           }
         } else if (obj instanceof Tent) {
           if (DEBUG_AJACENCY) {
+            renderDebugCircle(
+              ctx,
+              this.game.view,
+              obj.getCenter(),
+              TENT_ADJACENCY_RADIUS
+            );
+
             const adjacencies = this.game.tentAdjacencies.get(obj.id);
             if (adjacencies) {
               for (var i = 0; i < adjacencies.length; i++) {
@@ -1802,54 +1974,13 @@ class App extends Component<{}, void> {
     }
   }
 
-  _spawnObjectDebounced: (pos: Vec2dInit) => void = throttle(pos => {
-    const {editor} = this.game;
-    if (editor.mode === 'objects') {
-      const obj = this.game.spawnObjectOfType({type: editor.type.name, pos});
-
-      // center on mouse click
-      obj.pos.sub(
-        obj
-          .getCenter()
-          .clone()
-          .sub(obj.pos)
-      );
-    }
-  }, 300);
-
   _drawStuff(event: SyntheticMouseEvent<HTMLCanvasElement>) {
     const pos = new Vec2d({
       x: Math.floor(this.game.view.fromScreenX(event.pageX / SCALE)),
       y: Math.floor(this.game.view.fromScreenY(event.pageY / SCALE)),
     });
-    const {editor} = this.game;
-    switch (editor.mode) {
-      case 'pathfinding': {
-        const pathPoint = this.game.toPathfindingCoords(pos);
-        if (editor.brushSize === 1) {
-          this.game.setPathfindingTile(pathPoint, editor.paint);
-        } else {
-          const halfBrushSize = Math.floor(editor.brushSize / 2);
-
-          for (
-            var x = pathPoint.x - halfBrushSize;
-            x <= pathPoint.x + halfBrushSize;
-            x++
-          ) {
-            for (
-              var y = pathPoint.y - halfBrushSize;
-              y <= pathPoint.y + halfBrushSize;
-              y++
-            ) {
-              this.game.setPathfindingTile({x, y}, editor.paint);
-            }
-          }
-        }
-        break;
-      }
-      case 'objects': {
-        this._spawnObjectDebounced(pos);
-      }
+    if (this.editor) {
+      this.editor.drawStuff(pos);
     }
   }
 
@@ -1857,7 +1988,6 @@ class App extends Component<{}, void> {
     this._drawStuff(event);
   };
 
-  mouseIsDown = false;
   _handleMouseDown = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
     this.mouseIsDown = true;
   };
@@ -1867,6 +1997,12 @@ class App extends Component<{}, void> {
   _handleMouseMove = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
     if (this.mouseIsDown) {
       this._drawStuff(event);
+    }
+  };
+
+  _onRef = (ref: ?Editor) => {
+    if (ref) {
+      this.editor = ref;
     }
   };
 
@@ -1886,7 +2022,7 @@ class App extends Component<{}, void> {
         />
 
         {DRAW_HUD && <Hud game={this.game} />}
-        <Editor game={this.game} />
+        <Editor ref={this._onRef} game={this.game} />
       </div>
     );
   }
