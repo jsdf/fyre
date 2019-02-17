@@ -12,3 +12,6 @@
 
 [untyped]
 .*/sounds/.*
+
+[version]
+0.93.0
