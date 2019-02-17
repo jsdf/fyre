@@ -45,10 +45,6 @@ type Walkability = typeof WALKABLE | typeof AI_UNWALKABLE | typeof UNWALKABLE;
 const GRID_START = new Vec2d({x: 20, y: 20});
 const BG_OFFSET = new Vec2d({x: -400, y: -200});
 
-function toScreenPx(px) {
-  return px * SCALE;
-}
-
 function last<T>(arr: Array<T>): T {
   return arr[arr.length - 1];
 }
@@ -69,7 +65,7 @@ function throttle<T>(fn: (arg: T) => void, time: number): (arg: T) => void {
 const getImage = (() => {
   const cache = new Map();
   return (url: $Values<typeof assets> | '') => {
-    if (url == '') {
+    if (url === '') {
       return;
     }
     const cached = cache.get(url);
@@ -102,7 +98,7 @@ declare class Audio {
 const getSound = (() => {
   const cache = new Map();
   return (url: string) => {
-    if (url == '') {
+    if (url === '') {
       return;
     }
     const cached = cache.get(url);
@@ -280,7 +276,7 @@ class Bus extends GameObject {
 
 function typeFilter<T>(objs: Array<GameObject>, Typeclass: Class<T>): Array<T> {
   const result = [];
-  for (var i = 0; i < objs.length; i++) {
+  for (let i = 0; i < objs.length; i++) {
     if (objs[i] instanceof Typeclass) {
       result.push(objs[i]);
     }
@@ -442,11 +438,11 @@ class FestivalGoer extends GameObject {
         if (gridPath === null) {
           console.error('pathfinding failed', this, {start, end});
         } else {
-          if (gridPath.length == 0) {
+          if (gridPath.length === 0) {
             console.error('pathfinding failed: empty', this, {start, end});
           } else {
             this.path = new Path(
-              gridPath.length == 0
+              gridPath.length === 0
                 ? [target.pos]
                 : gridPath.map(gridPoint =>
                     game.fromPathfindingCoords(gridPoint)
@@ -871,8 +867,9 @@ class Game {
         return this._spawnGeneric(obj.pos, CheeseSandwich);
       case 'Water':
         return this._spawnGeneric(obj.pos, Water);
+      default:
+        throw new Error(`unknown object type ${obj.type}`);
     }
-    throw new Error(`unknown object type ${obj.type}`);
   }
 
   _spawnObjects() {
@@ -885,8 +882,8 @@ class Game {
     });
   }
 
-  _spawnGeneric(pos: Vec2dInit, Class: Class<GameObject>) {
-    const obj = new Class(pos);
+  _spawnGeneric(pos: Vec2dInit, ObjectClass: Class<GameObject>) {
+    const obj = new ObjectClass(pos);
     this.addWorldObject(obj);
     return obj;
   }
@@ -901,8 +898,9 @@ class Game {
             case 'CheeseSandwich':
             case 'Water':
               return obj.toJSON();
+            default:
+              return null;
           }
-          return null;
         })
         .filter(Boolean),
       null,
@@ -988,7 +986,7 @@ class Game {
 
     // const searchArea = new Vec2d({x: 100, y: 100});
     // class RangeQuery extends GameObject {}
-    // for (var i = 0; i < tents.length; i++) {
+    // for (let i = 0; i < tents.length; i++) {
     //   // simulate range query using collision system
     //   const center = tents[i].getCenter().clone();
     //   const range = new RangeQuery(center.sub(searchArea));
@@ -997,7 +995,7 @@ class Game {
     //   range.bboxStart = new Vec2d({x: 0, y: 0});
     //   range.bboxEnd = searchArea.clone().multiplyScalar(2);
 
-    //   for (var k = 0; k < tents.length; k++) {
+    //   for (let k = 0; k < tents.length; k++) {
     //     if (
     //       i !== k && // ignore self
     //       collision(tents[k], range)
@@ -1007,12 +1005,12 @@ class Game {
     //   }
     // }
 
-    for (var i = 0; i < tents.length; i++) {
+    for (let i = 0; i < tents.length; i++) {
       const center = tents[i].getCenter();
       const adjacencyList = [];
       tentAdjacencies.set(tents[i].id, adjacencyList);
 
-      for (var k = 0; k < tents.length; k++) {
+      for (let k = 0; k < tents.length; k++) {
         if (
           i !== k && // ignore self
           tents[k].getCenter().distanceTo(center) <= TENT_ADJACENCY_RADIUS
@@ -1073,7 +1071,7 @@ class Game {
   }
 
   update() {
-    for (var i = 0; i < this.worldObjects.length; i++) {
+    for (let i = 0; i < this.worldObjects.length; i++) {
       this.worldObjects[i].update(this);
     }
     this._detectCollisions();
@@ -1088,9 +1086,9 @@ class Game {
   }
 
   _detectCollisions() {
-    for (var i = this.worldObjects.length - 1; i >= 0; i--) {
+    for (let i = this.worldObjects.length - 1; i >= 0; i--) {
       const object = this.worldObjects[i];
-      for (var k = this.worldObjects.length - 1; k >= 0; k--) {
+      for (let k = this.worldObjects.length - 1; k >= 0; k--) {
         const otherObject = this.worldObjects[k];
         if (object !== otherObject) {
           if (collision(object, otherObject)) {
@@ -1121,10 +1119,6 @@ class Game {
       otherObject.pickedUp(object);
     }
   }
-}
-
-function lerp(v0: number, v1: number, t: number) {
-  return (1 - t) * v0 + t * v1;
 }
 
 const renderBBox = (
@@ -1172,12 +1166,10 @@ const renderPathfindingGrid = (
         const pos = game.fromPathfindingCoords({x: col, y: row});
         const {x, y} = pos;
 
-        const isBlocked = grid[row][col] == 1;
-
         const color =
-          grid[row][col] == WALKABLE
+          grid[row][col] === WALKABLE
             ? 'green'
-            : grid[row][col] == AI_UNWALKABLE ? 'red' : 'yellow';
+            : grid[row][col] === AI_UNWALKABLE ? 'red' : 'yellow';
         if (DEBUG_PATHFINDING_NODES) {
           renderPoint(ctx, view, pos, color);
         }
@@ -1268,37 +1260,9 @@ const renderFestivalGoerImage = (
   }
 };
 
-const renderTilesInView = (ctx: CanvasRenderingContext2D, view: View) => {
-  const image = getImage(DARK ? assets.dssand2dark : assets.dssand2);
-  if (!image) return;
-
-  const viewWidth = window.innerWidth / SCALE;
-  const viewHeight = window.innerHeight / SCALE;
-
-  const firstTileX = Math.floor(view.offset.x / image.width) * image.width;
-  const numTilesInViewX = viewWidth / image.width + 1;
-  const firstTileY = Math.floor(view.offset.y / image.height) * image.height;
-  const numTilesInViewY = viewHeight / image.height + 1;
-
-  for (let row = 0; row < numTilesInViewY; row++) {
-    for (let col = 0; col < numTilesInViewX; col++) {
-      ctx.drawImage(
-        image,
-        Math.floor(view.toScreenX(firstTileX + col * image.width)),
-        Math.floor(view.toScreenY(firstTileY + row * image.height)),
-        image.width,
-        image.height
-      );
-    }
-  }
-};
-
 const renderBG = (ctx: CanvasRenderingContext2D, view: View) => {
   const image = getImage(assets.bg);
   if (!image) return;
-
-  const viewWidth = window.innerWidth / SCALE;
-  const viewHeight = window.innerHeight / SCALE;
 
   ctx.drawImage(
     image,
@@ -1332,7 +1296,7 @@ const renderPissStream = (
   // splashes
   ctx.strokeStyle = 'white';
 
-  for (var i = 0; i < 4; i++) {
+  for (let i = 0; i < 4; i++) {
     ctx.beginPath();
     ctx.moveTo(view.toScreenX(to.x), view.toScreenY(to.y));
     ctx.lineTo(
@@ -1587,6 +1551,7 @@ type EditorObjectsModeCommand = {
   description: string,
   undo: () => void,
 };
+
 type EditorModeState =
   | {|mode: 'pathfinding', paint: Walkability, brushSize: number|}
   | {|
@@ -1659,6 +1624,8 @@ class Editor extends React.Component<
 
         return;
       }
+      default:
+        return (state.submode: empty);
     }
   }, 300);
 
@@ -1674,12 +1641,12 @@ class Editor extends React.Component<
           const halfBrushSize = Math.floor(state.brushSize / 2);
 
           for (
-            var x = pathPoint.x - halfBrushSize;
+            let x = pathPoint.x - halfBrushSize;
             x <= pathPoint.x + halfBrushSize;
             x++
           ) {
             for (
-              var y = pathPoint.y - halfBrushSize;
+              let y = pathPoint.y - halfBrushSize;
               y <= pathPoint.y + halfBrushSize;
               y++
             ) {
@@ -1691,17 +1658,24 @@ class Editor extends React.Component<
       }
       case 'objects': {
         this._spawnObjectDebounced(pos);
+        break;
       }
+      default:
+        return;
     }
   }
-  _initMode(name: string): EditorModeState {
+  _initMode(name: $PropertyType<EditorModeState, 'mode'>): EditorModeState {
     switch (name) {
       case 'pathfinding':
         return {mode: 'pathfinding', paint: UNWALKABLE, brushSize: 1};
       case 'objects':
         return {mode: 'objects', submode: 'add', type: Tent, history: []};
+      case 'play': {
+        return {mode: 'play'};
+      }
+      default:
+        return (name: empty);
     }
-    return {mode: 'play'};
   }
   getModeState(): EditorModeState {
     return this.state.modeState;
@@ -1771,9 +1745,11 @@ class Editor extends React.Component<
           <div style={Editor.RIGHT_ALIGN}>
             <button onClick={this._handlePaintChange}>
               walkability:{' '}
-              {state.paint == WALKABLE
+              {state.paint === WALKABLE
                 ? 'WALKABLE'
-                : state.paint == AI_UNWALKABLE ? 'AI_UNWALKABLE' : 'UNWALKABLE'}
+                : state.paint === AI_UNWALKABLE
+                  ? 'AI_UNWALKABLE'
+                  : 'UNWALKABLE'}
             </button>
             <button onClick={this._handleBrushSizeChange}>
               brushSize: {state.brushSize}
@@ -1804,7 +1780,7 @@ class Editor extends React.Component<
             >
               <div>{state.type.name}</div>
               <div>
-                <img src={new state.type().sprite} />
+                <img alt={state.type.name} src={new state.type().sprite} />
               </div>
             </div>
 
@@ -1818,8 +1794,9 @@ class Editor extends React.Component<
           </div>
         );
       }
+      default:
+        return null;
     }
-    return null;
   }
 
   render() {
@@ -1893,6 +1870,8 @@ class App extends Component<{}, void> {
         this.game.keys.attack = pressed;
         break;
       }
+      default:
+        break;
     }
   }
   _enqueueFrame() {
@@ -1958,7 +1937,7 @@ class App extends Component<{}, void> {
             const {path} = obj;
             if (path) {
               let lastPoint = obj.getCenter();
-              for (var i = 0; i < path.points.length; i++) {
+              for (let i = 0; i < path.points.length; i++) {
                 const dest = path.points[i];
 
                 renderPoint(ctx, this.game.view, dest, 'blue');
@@ -1989,7 +1968,7 @@ class App extends Component<{}, void> {
 
             const adjacencies = this.game.tentAdjacencies.get(obj.id);
             if (adjacencies) {
-              for (var i = 0; i < adjacencies.length; i++) {
+              for (let i = 0; i < adjacencies.length; i++) {
                 const adjacent = this.game.worldObjectsByID.get(adjacencies[i]);
                 if (adjacent) {
                   renderDebugLine(

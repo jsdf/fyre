@@ -30,7 +30,7 @@ export default class Vec2d {
   }
 
   normalise() {
-    if (this.x == 0 && this.y == 0) return this;
+    if (this.x === 0 && this.y === 0) return this;
 
     const magnitude = Math.sqrt(this.x * this.x + this.y * this.y);
     this.x /= magnitude;
