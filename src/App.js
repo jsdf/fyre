@@ -13,6 +13,8 @@ type GameObjectInit = {type: string, pos: {x: number, y: number}};
 
 const objects: Array<GameObjectInit> = objectsData;
 
+const PROD_OPTIMIZE = true;
+const MAX_OBJECT_SIZE = 96;
 const PATH_GRID_ROWS = 17 * 5;
 const PATH_GRID_COLS = 18 * 5;
 const PATH_GRID_UNIT_WIDTH = 64 / 5;
@@ -22,11 +24,11 @@ const DEBUG_OBJECTS = false;
 const DEBUG_AI_TARGETS = false;
 const DEBUG_BBOX = false;
 const DEBUG_PLAYER_STATE = false;
-const DEBUG_PATHFINDING_NODES = true;
-const DEBUG_PATHFINDING_BBOXES = false;
+const DEBUG_PATHFINDING_NODES = false;
+const DEBUG_PATHFINDING_BBOXES = true;
 const DEBUG_PATH_FOLLOWING = false;
 const DEBUG_PATH_FOLLOWING_STUCK = true;
-const DEBUG_AJACENCY = true;
+const DEBUG_AJACENCY = false;
 const DARK = false;
 const DRAW_HUD = true;
 const SOUND_VOLUME = 0;
@@ -186,6 +188,12 @@ class GameObject {
       pos: this.pos.toJSON(),
     };
   }
+
+  toString() {
+    return `${this.constructor.name} {x: ${this.pos.x.toFixed(
+      2
+    )}, y: ${this.pos.y.toFixed(2)}}`;
+  }
 }
 
 class Tent extends GameObject {
@@ -304,7 +312,6 @@ class Path {
 }
 
 class FestivalGoer extends GameObject {
-  pos = new Vec2d({x: 100 + Math.floor(Math.random() * 300), y: 320});
   bboxStart = new Vec2d({x: 13, y: 18});
   bboxEnd = new Vec2d({x: 17, y: 23});
   lastMove = new Vec2d();
@@ -627,10 +634,11 @@ class AttackingState extends TimedAttackState {
 }
 
 class Player extends FestivalGoer {
+  static START_POS = new Vec2d({x: 308, y: 791});
   piss = 3;
   energy = 3;
   score = 0;
-  pos = new Vec2d({x: 300, y: 200});
+  pos = Player.START_POS.clone();
   bboxStart = new Vec2d({x: 13, y: 18});
   bboxEnd = new Vec2d({x: 17, y: 23});
   stillSprite = assets.guystill;
@@ -762,6 +770,35 @@ class View {
     return y + this.offset.y;
   }
 
+  inView(obj: GameObject) {
+    const viewWidth = window.innerWidth / SCALE;
+    const viewHeight = window.innerHeight / SCALE;
+
+    // work out the corners (x1,x2,y1,y1) of each rectangle
+    // view
+    // top left
+    let viewx1 = this.offset.x;
+    let viewy1 = this.offset.y;
+    // bottom right
+    let viewx2 = this.offset.x + viewWidth;
+    let viewy2 = this.offset.y + viewHeight;
+    // obj
+    // top left
+    let objx1 = obj.pos.x;
+    let objy1 = obj.pos.y;
+    // bottom right
+    let objx2 = obj.pos.x + MAX_OBJECT_SIZE;
+    let objy2 = obj.pos.y + MAX_OBJECT_SIZE;
+
+    // test rect overlap
+    return !(
+      viewx1 > objx2 ||
+      objx1 > viewx2 ||
+      viewy1 > objy2 ||
+      objy1 > viewy2
+    );
+  }
+
   update(playerPos: Vec2d, viewWidth: number, viewHeight: number) {
     this.offset.x += View.calculateViewAdjustmentForDimension(
       this.offset.x,
@@ -839,7 +876,7 @@ class Game {
     this.addWorldObject(this.player);
     this.initTentAdjacencies();
 
-    // this._startSpawningPeople();
+    this._startSpawningPeople();
   }
 
   addWorldObject(obj: GameObject) {
@@ -1054,7 +1091,12 @@ class Game {
   }
 
   _spawnPerson() {
-    this.addWorldObject(new FestivalGoer());
+    const pos = Player.START_POS.clone().add({
+      x: Math.floor(Math.random() * 300) - 200,
+      y: 0,
+    });
+
+    this.addWorldObject(new FestivalGoer(pos));
   }
 
   _startSpawningPeople() {
@@ -1481,6 +1523,124 @@ const renderTarget = (
   );
 };
 
+function renderFrame(canvas, ctx, game) {
+  // console.log('start frame');
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  renderBG(ctx, game.view);
+  game.worldObjects.forEach((obj, i) => {
+    if (!obj.enabled) {
+      return;
+    }
+    if (!game.view.inView(obj)) {
+      // console.log('skipping', obj.toString());
+      return;
+    }
+    if (obj instanceof Player) {
+      renderFestivalGoerImage(ctx, game.view, obj);
+    } else if (obj instanceof FestivalGoer) {
+      renderFestivalGoerImage(ctx, game.view, obj);
+    } else if (obj instanceof Powerup) {
+      return;
+    } else if (obj instanceof Tent) {
+      renderTent(ctx, game.view, obj);
+    } else {
+      renderObjectImage(ctx, game.view, obj);
+    }
+  });
+  const {target} = game.player;
+
+  if (DARK) {
+    // render tint
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = '#aac2eb';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // render stuff above tint
+  renderPathfindingGrid(ctx, game.view, game);
+  game.worldObjects.forEach((obj, i) => {
+    if (!obj.enabled) {
+      return;
+    }
+    if (obj instanceof Powerup) {
+      if (!game.view.inView(obj)) {
+        return;
+      }
+      renderObjectImage(ctx, game.view, obj);
+    } else if (obj instanceof FestivalGoer) {
+      if (DEBUG_PATH_FOLLOWING_STUCK && obj.stuck) {
+        const {path} = obj;
+        if (path) {
+          let lastPoint = obj.getCenter();
+          for (let i = 0; i < path.points.length; i++) {
+            const dest = path.points[i];
+
+            renderPoint(ctx, game.view, dest, 'blue');
+
+            renderDebugLine(ctx, game.view, lastPoint, dest);
+            lastPoint = path.points[i];
+          }
+        }
+      } else if (DEBUG_PATH_FOLLOWING) {
+        const {path} = obj;
+        if (path) {
+          const dest = path.getNextPoint();
+          if (dest) {
+            renderPoint(ctx, game.view, dest, 'blue');
+
+            renderDebugLine(ctx, game.view, obj.getCenter(), dest);
+          }
+        }
+      }
+    } else if (obj instanceof Tent) {
+      if (DEBUG_AJACENCY) {
+        renderDebugCircle(
+          ctx,
+          game.view,
+          obj.getCenter(),
+          TENT_ADJACENCY_RADIUS
+        );
+
+        const adjacencies = game.tentAdjacencies.get(obj.id);
+        if (adjacencies) {
+          for (let i = 0; i < adjacencies.length; i++) {
+            const adjacent = game.worldObjectsByID.get(adjacencies[i]);
+            if (adjacent) {
+              renderDebugLine(
+                ctx,
+                game.view,
+                obj.getCenter(),
+                adjacent.getCenter()
+              );
+            }
+          }
+        }
+      }
+    }
+    if (DEBUG_BBOX) {
+      renderBBox(ctx, game.view, obj);
+    }
+  });
+
+  // render singleton things
+  const playerState = game.player.state;
+
+  if (playerState instanceof PissingState) {
+    renderPissStream(
+      ctx,
+      game.view,
+      game.player.getCenter().add(new Vec2d({x: 0, y: -4})),
+      playerState.target.getCenter()
+    );
+  }
+  if (target) {
+    renderTarget(ctx, game.view, target, game);
+  }
+  // console.log('end frame');
+}
+
 const Hud = (props: {game: Game}) => {
   const {target} = props.game.player;
   return (
@@ -1686,7 +1846,7 @@ class Editor extends React.Component<
   _handleEditorModeChange = () => {
     const state = this.getModeState();
     const prevMode = state.mode;
-    const nextMode = Editor.cycle(['pathfinding', 'objects', 'play'], prevMode);
+    const nextMode = Editor.cycle(['play', 'objects', 'pathfinding'], prevMode);
     this.updateModeState(this._initMode(nextMode));
   };
   _handleObjectTypeChange = () => {
@@ -1770,8 +1930,7 @@ class Editor extends React.Component<
             </div>
             <div>
               <button onClick={this._handleObjectSubmodeToggle}>
-                mode:
-                {state.submode}
+                action: {state.submode}
               </button>
             </div>
             <div
@@ -1878,8 +2037,11 @@ class App extends Component<{}, void> {
     requestAnimationFrame(() => {
       this.game.frame++;
       this._update();
-      // this._renderCanvas();
-      this.forceUpdate(); // TODO: remove this when hud doesn't need react
+      if (PROD_OPTIMIZE) {
+        this._renderCanvas();
+      } else {
+        this.forceUpdate(); // TODO: remove this when hud doesn't need react
+      }
       this._enqueueFrame();
     });
   }
@@ -1894,113 +2056,7 @@ class App extends Component<{}, void> {
     const canvas = this._canvas;
     if (canvas instanceof HTMLCanvasElement) {
       const ctx = canvas.getContext('2d');
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      // renderTilesInView(ctx, this.game.view);
-      renderBG(ctx, this.game.view);
-      this.game.worldObjects.forEach((obj, i) => {
-        if (!obj.enabled) {
-          return;
-        }
-        if (obj instanceof Player) {
-          renderFestivalGoerImage(ctx, this.game.view, obj);
-        } else if (obj instanceof FestivalGoer) {
-          renderFestivalGoerImage(ctx, this.game.view, obj);
-        } else if (obj instanceof Powerup) {
-          return;
-        } else if (obj instanceof Tent) {
-          renderTent(ctx, this.game.view, obj);
-        } else {
-          renderObjectImage(ctx, this.game.view, obj);
-        }
-      });
-      const {target} = this.game.player;
-
-      if (DARK) {
-        // render tint
-        ctx.globalCompositeOperation = 'multiply';
-        ctx.fillStyle = '#aac2eb';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.globalCompositeOperation = 'source-over';
-      }
-
-      // render stuff above tint
-      renderPathfindingGrid(ctx, this.game.view, this.game);
-      this.game.worldObjects.forEach((obj, i) => {
-        if (!obj.enabled) {
-          return;
-        }
-        if (obj instanceof Powerup) {
-          renderObjectImage(ctx, this.game.view, obj);
-        } else if (obj instanceof FestivalGoer) {
-          if (DEBUG_PATH_FOLLOWING_STUCK && obj.stuck) {
-            const {path} = obj;
-            if (path) {
-              let lastPoint = obj.getCenter();
-              for (let i = 0; i < path.points.length; i++) {
-                const dest = path.points[i];
-
-                renderPoint(ctx, this.game.view, dest, 'blue');
-
-                renderDebugLine(ctx, this.game.view, lastPoint, dest);
-                lastPoint = path.points[i];
-              }
-            }
-          } else if (DEBUG_PATH_FOLLOWING) {
-            const {path} = obj;
-            if (path) {
-              const dest = path.getNextPoint();
-              if (dest) {
-                renderPoint(ctx, this.game.view, dest, 'blue');
-
-                renderDebugLine(ctx, this.game.view, obj.getCenter(), dest);
-              }
-            }
-          }
-        } else if (obj instanceof Tent) {
-          if (DEBUG_AJACENCY) {
-            renderDebugCircle(
-              ctx,
-              this.game.view,
-              obj.getCenter(),
-              TENT_ADJACENCY_RADIUS
-            );
-
-            const adjacencies = this.game.tentAdjacencies.get(obj.id);
-            if (adjacencies) {
-              for (let i = 0; i < adjacencies.length; i++) {
-                const adjacent = this.game.worldObjectsByID.get(adjacencies[i]);
-                if (adjacent) {
-                  renderDebugLine(
-                    ctx,
-                    this.game.view,
-                    obj.getCenter(),
-                    adjacent.getCenter()
-                  );
-                }
-              }
-            }
-          }
-        }
-        if (DEBUG_BBOX) {
-          renderBBox(ctx, this.game.view, obj);
-        }
-      });
-
-      // render singleton things
-      const playerState = this.game.player.state;
-
-      if (playerState instanceof PissingState) {
-        renderPissStream(
-          ctx,
-          this.game.view,
-          this.game.player.getCenter().add(new Vec2d({x: 0, y: -4})),
-          playerState.target.getCenter()
-        );
-      }
-      if (target) {
-        renderTarget(ctx, this.game.view, target, this.game);
-      }
+      renderFrame(canvas, ctx, this.game);
     }
   }
 
@@ -2045,8 +2101,8 @@ class App extends Component<{}, void> {
           onMouseDown={this._handleMouseDown}
           onMouseUp={this._handleMouseUp}
           onMouseMove={this._handleMouseMove}
-          width={window.innerWidth / 2}
-          height={window.innerHeight / 2}
+          width={window.innerWidth / SCALE}
+          height={window.innerHeight / SCALE}
           style={{transform: `scale(${SCALE})`, transformOrigin: 'top left'}}
           className="sprite"
         />
