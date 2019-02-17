@@ -1566,6 +1566,23 @@ const Hud = (props: {game: Game}) => {
   );
 };
 
+class RangeQuery extends GameObject {
+  constructor(init: Vec2dInit, area: Vec2dInit) {
+    super(init);
+
+    this.bboxStart = new Vec2d({x: 0, y: 0});
+    this.bboxEnd = new Vec2d(area).multiplyScalar(2);
+  }
+
+  first(objects: Array<GameObject>): ?GameObject {
+    return objects.find(obj => collision(obj, this)) || null;
+  }
+
+  all(objects: Array<GameObject>): Array<GameObject> {
+    return objects.filter(obj => collision(obj, this));
+  }
+}
+
 type EditorObjectsModeCommand = {
   description: string,
   undo: () => void,
@@ -1574,6 +1591,7 @@ type EditorModeState =
   | {|mode: 'pathfinding', paint: Walkability, brushSize: number|}
   | {|
       mode: 'objects',
+      submode: 'add' | 'delete',
       type: Class<GameObject>,
       history: Array<EditorObjectsModeCommand>,
     |}
@@ -1586,33 +1604,62 @@ class Editor extends React.Component<
   static cycle<T>(types: Array<T>, prev: T): T {
     return types[(types.indexOf(prev) + 1) % types.length];
   }
+  static RIGHT_ALIGN = {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+  };
   state = {modeState: {mode: 'play'}};
 
   _spawnObjectDebounced: (pos: Vec2dInit) => void = throttle(pos => {
     const game = this.props.game;
     const state = this.getModeState();
     if (state.mode !== 'objects') return;
-    const obj = game.spawnObjectOfType({type: state.type.name, pos});
 
-    // center on mouse click
-    obj.pos.sub(
-      obj
-        .getCenter()
-        .clone()
-        .sub(obj.pos)
-    );
+    switch (state.submode) {
+      case 'add': {
+        const obj = game.spawnObjectOfType({type: state.type.name, pos});
 
-    const history = state.history;
+        // center on mouse click
+        obj.pos.sub(
+          obj
+            .getCenter()
+            .clone()
+            .sub(obj.pos)
+        );
 
-    this.updateModeState({
-      ...state,
-      history: state.history.concat({
-        description: `add ${obj.constructor.name} ${obj.id}`,
-        undo: () => {
+        this.updateModeState({
+          ...state,
+          history: state.history.concat({
+            description: `add ${obj.constructor.name} ${obj.id}`,
+            undo: () => {
+              game.removeWorldObject(obj);
+            },
+          }),
+        });
+        return;
+      }
+      case 'delete': {
+        const searchArea = {x: 1, y: 1};
+        const obj = new RangeQuery(pos, searchArea).first(game.worldObjects);
+
+        if (obj) {
           game.removeWorldObject(obj);
-        },
-      }),
-    });
+
+          this.updateModeState({
+            ...state,
+            history: state.history.concat({
+              description: `delete ${obj.constructor.name} ${obj.id}`,
+              undo: () => {
+                game.addWorldObject(obj);
+              },
+            }),
+          });
+        }
+
+        return;
+      }
+    }
   }, 300);
 
   drawStuff(pos: Vec2d) {
@@ -1652,7 +1699,7 @@ class Editor extends React.Component<
       case 'pathfinding':
         return {mode: 'pathfinding', paint: UNWALKABLE, brushSize: 1};
       case 'objects':
-        return {mode: 'objects', type: Tent, history: []};
+        return {mode: 'objects', submode: 'add', type: Tent, history: []};
     }
     return {mode: 'play'};
   }
@@ -1665,9 +1712,7 @@ class Editor extends React.Component<
   _handleEditorModeChange = () => {
     const state = this.getModeState();
     const prevMode = state.mode;
-    const modes = ['pathfinding', 'objects', 'play'];
-    const nextMode = modes[(modes.indexOf(prevMode) + 1) % modes.length];
-
+    const nextMode = Editor.cycle(['pathfinding', 'objects', 'play'], prevMode);
     this.updateModeState(this._initMode(nextMode));
   };
   _handleObjectTypeChange = () => {
@@ -1694,7 +1739,15 @@ class Editor extends React.Component<
       brushSize: Editor.cycle([1, 3, 5], state.brushSize),
     });
   };
-  _handleUndo = () => {
+  _handleObjectSubmodeToggle = () => {
+    const state = this.getModeState();
+    if (state.mode !== 'objects') return;
+    this.updateModeState({
+      ...state,
+      submode: Editor.cycle(['add', 'delete'], state.submode),
+    });
+  };
+  _handleObjectUndo = () => {
     const state = this.getModeState();
     if (state.mode !== 'objects') return;
     const lastItem = last(state.history);
@@ -1710,31 +1763,12 @@ class Editor extends React.Component<
   _handleInitAdjacency = () => {
     this.props.game.initTentAdjacencies();
   };
-  render() {
-    const state = this.getModeState();
-    return (
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          right: 0,
-          width: 300,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'flex-end',
-        }}
-      >
-        <div>
-          <button onClick={this._handleEditorModeChange}>{state.mode}</button>
-        </div>
-        {state.mode === 'pathfinding' && (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'flex-end',
-            }}
-          >
+
+  _renderModeMenu(state: EditorModeState) {
+    switch (state.mode) {
+      case 'pathfinding': {
+        return (
+          <div style={Editor.RIGHT_ALIGN}>
             <button onClick={this._handlePaintChange}>
               walkability:{' '}
               {state.paint == WALKABLE
@@ -1745,29 +1779,27 @@ class Editor extends React.Component<
               brushSize: {state.brushSize}
             </button>
           </div>
-        )}
-        {state.mode === 'objects' && (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'flex-end',
-            }}
-          >
+        );
+      }
+      case 'objects': {
+        return (
+          <div style={Editor.RIGHT_ALIGN}>
             <div>
-              <button onClick={this._handleUndo}>
+              <button onClick={this._handleObjectUndo}>
                 undo{' '}
                 {last(state.history)
                   ? last(state.history).description
-                  : '[none]'}
+                  : '[nothing to undo]'}
+              </button>
+            </div>
+            <div>
+              <button onClick={this._handleObjectSubmodeToggle}>
+                mode:
+                {state.submode}
               </button>
             </div>
             <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-end',
-              }}
+              style={Editor.RIGHT_ALIGN}
               onClick={this._handleObjectTypeChange}
             >
               <div>{state.type.name}</div>
@@ -1784,7 +1816,26 @@ class Editor extends React.Component<
               </div>
             )}
           </div>
-        )}
+        );
+      }
+    }
+    return null;
+  }
+
+  render() {
+    const state = this.getModeState();
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          width: 300,
+          ...Editor.RIGHT_ALIGN,
+        }}
+      >
+        <button onClick={this._handleEditorModeChange}>{state.mode}</button>
+        {this._renderModeMenu(state)}
       </div>
     );
   }
