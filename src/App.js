@@ -217,6 +217,12 @@ class GameObject {
     }
   );
 
+  getMax = memoizedVec2dOneArgDeriver(
+    () => this.pos,
+    (pos, result) => {
+      result.copyFrom(pos).add(this.bboxEnd);
+    }
+  );
 
   toJSON() {
     return {
@@ -756,8 +762,6 @@ class Player extends FestivalGoer {
     ) {
       playerMove = getMovementVelocity(playerMove, Player.MOVEMENT_SPEED);
       const lastPos = this.pos.clone();
-      const lastCenter = this.getCenter();
-      const centerOffset = lastCenter.clone().sub(lastPos);
       this.pos.add(playerMove);
       const updatedCenter = this.getCenter();
       const walkability = game.getPathfindingTile(
@@ -1635,7 +1639,11 @@ function renderFrame(canvas, ctx, game, editorModeState) {
   ctx.globalCompositeOperation = 'source-over';
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   renderBG(ctx, game.view);
-  game.worldObjects.forEach((obj, i) => {
+
+  const ySortedObjects = game.worldObjects
+    .slice()
+    .sort((a, b) => a.getMax().y - b.getMax().y);
+  ySortedObjects.forEach((obj, i) => {
     if (!obj.enabled) {
       return;
     }
@@ -1666,8 +1674,8 @@ function renderFrame(canvas, ctx, game, editorModeState) {
   }
 
   // render stuff above tint
-  renderPathfindingGrid(ctx, game.view, game);
-  game.worldObjects.forEach((obj, i) => {
+  renderPathfindingGrid(ctx, game.view, game, editorModeState);
+  ySortedObjects.forEach((obj, i) => {
     if (!obj.enabled) {
       return;
     }
