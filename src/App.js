@@ -13,19 +13,20 @@ type GameObjectInit = {type: string, pos: {x: number, y: number}};
 
 const objects: Array<GameObjectInit> = objectsData;
 
-const PROD_OPTIMIZE = true;
+const PROD_OPTIMIZE = false;
 const MAX_OBJECT_SIZE = 96;
-const PATH_GRID_ROWS = 17 * 5;
-const PATH_GRID_COLS = 18 * 5;
-const PATH_GRID_UNIT_WIDTH = 64 / 5;
-const PATH_GRID_UNIT_HEIGHT = 64 / 5;
+const PATH_GRID_SUBDIV = 5;
+const PATH_GRID_ROWS = 17 * PATH_GRID_SUBDIV;
+const PATH_GRID_COLS = 18 * PATH_GRID_SUBDIV;
+const PATH_GRID_UNIT_WIDTH = 64 / PATH_GRID_SUBDIV;
+const PATH_GRID_UNIT_HEIGHT = 64 / PATH_GRID_SUBDIV;
 const SCALE = 2;
 const DEBUG_OBJECTS = false;
 const DEBUG_AI_TARGETS = false;
 const DEBUG_BBOX = false;
-const DEBUG_PLAYER_STATE = false;
+const DEBUG_PLAYER_STATE = true;
 const DEBUG_PATHFINDING_NODES = false;
-const DEBUG_PATHFINDING_BBOXES = false;
+const DEBUG_PATHFINDING_BBOXES = true;
 const DEBUG_PATH_FOLLOWING = false;
 const DEBUG_PATH_FOLLOWING_STUCK = true;
 const DEBUG_AJACENCY = false;
@@ -376,12 +377,12 @@ class FestivalGoer extends GameObject {
     for (let rowRel = -1 * searchRadius; rowRel < searchRadius; rowRel++) {
       for (let colRel = -1 * searchRadius; colRel < searchRadius; colRel++) {
         const pathfindingPos = {x: target.x + colRel, y: target.y + rowRel};
-        const gamePos = game.fromPathfindingCoords(pathfindingPos);
+        const gamePos = game.tileCenterFromPathfindingCoords(pathfindingPos);
         const pathfindingPosClamped = game.toPathfindingCoords(gamePos);
         candidates.push({
           pathfindingPos,
           distance: this.getCenter().distanceTo(
-            game.fromPathfindingCoords(pathfindingPos)
+            game.tileCenterFromPathfindingCoords(pathfindingPos)
           ),
           walkable:
             pathfindingGrid[pathfindingPosClamped.y][
@@ -452,7 +453,7 @@ class FestivalGoer extends GameObject {
               gridPath.length === 0
                 ? [target.pos]
                 : gridPath.map(gridPoint =>
-                    game.fromPathfindingCoords(gridPoint)
+                    game.tileCenterFromPathfindingCoords(gridPoint)
                   )
             );
 
@@ -525,7 +526,7 @@ class FestivalGoer extends GameObject {
 
     this.updateDialog();
 
-    let playerMove = new Vec2d();
+    let move = new Vec2d();
     const path = this.path;
     const target = this.target;
 
@@ -543,17 +544,17 @@ class FestivalGoer extends GameObject {
           if (!nextPoint) {
             throw new Error('expected next point');
           }
-          playerMove.add(this.getCenter().directionTo(nextPoint));
+          move.add(this.getCenter().directionTo(nextPoint));
         } else {
-          playerMove.add(this.getCenter().directionTo(target.getCenter()));
+          move.add(this.getCenter().directionTo(target.getCenter()));
         }
       }
     }
 
-    if (playerMove.x !== 0 || playerMove.y !== 0) {
-      playerMove = getMovementVelocity(playerMove, FestivalGoer.MOVEMENT_SPEED);
-      this.pos.add(playerMove);
-      this.lastMove = playerMove;
+    if (move.x !== 0 || move.y !== 0) {
+      move = getMovementVelocity(move, FestivalGoer.MOVEMENT_SPEED);
+      this.pos.add(move);
+      this.lastMove = move;
       this.isMoving = true;
     } else {
       this.isMoving = false;
@@ -673,7 +674,18 @@ class Player extends FestivalGoer {
       !(this.state instanceof AttackingState)
     ) {
       playerMove = getMovementVelocity(playerMove, Player.MOVEMENT_SPEED);
+      const lastPos = this.pos.clone();
+      const lastCenter = this.getCenter();
+      const centerOffset = lastCenter.clone().sub(lastPos);
       this.pos.add(playerMove);
+      const updatedCenter = this.getCenter();
+      const walkability = game.getPathfindingTile(
+        game.toPathfindingCoordsUnclamped(updatedCenter)
+      );
+      if (walkability == null || walkability === UNWALKABLE) {
+        // revert pos
+        this.pos = lastPos;
+      }
       this.lastMove = playerMove;
       this.isMoving = true;
     } else {
@@ -965,16 +977,32 @@ class Game {
       PATH_GRID_ROWS - 1
     );
     if (Number.isNaN(x) || Number.isNaN(y)) {
-      debugger;
+      throw new Error(`invalid coordinates ${x},${y}`);
     }
     return {x, y};
   }
-  fromPathfindingCoords(point: {x: number, y: number}) {
+  toPathfindingCoordsUnclamped(pos: Vec2d) {
+    const x = Math.floor(
+      (pos.x - Game.PATH_GRID_OFFSET.x) / PATH_GRID_UNIT_WIDTH
+    );
+    const y = Math.floor(
+      (pos.y - Game.PATH_GRID_OFFSET.y) / PATH_GRID_UNIT_HEIGHT
+    );
+    if (Number.isNaN(x) || Number.isNaN(y)) {
+      throw new Error(`invalid coordinates ${x},${y}`);
+    }
+    return {x, y};
+  }
+  tileCenterFromPathfindingCoords(point: {x: number, y: number}) {
     const pos = new Vec2d();
-    const gridItemWidth = PATH_GRID_UNIT_WIDTH;
-    const gridItemHeight = PATH_GRID_UNIT_HEIGHT;
-    pos.x = Game.PATH_GRID_OFFSET.x + (point.x + 0.5) * gridItemWidth;
-    pos.y = Game.PATH_GRID_OFFSET.y + (point.y + 0.5) * gridItemHeight;
+    pos.x = Game.PATH_GRID_OFFSET.x + (point.x + 0.5) * PATH_GRID_UNIT_WIDTH;
+    pos.y = Game.PATH_GRID_OFFSET.y + (point.y + 0.5) * PATH_GRID_UNIT_HEIGHT;
+    return pos;
+  }
+  tileFloorFromPathfindingCoords(point: {x: number, y: number}) {
+    const pos = new Vec2d();
+    pos.x = Game.PATH_GRID_OFFSET.x + point.x * PATH_GRID_UNIT_WIDTH;
+    pos.y = Game.PATH_GRID_OFFSET.y + point.y * PATH_GRID_UNIT_HEIGHT;
     return pos;
   }
 
@@ -1001,14 +1029,6 @@ class Game {
   }
 
   _initPathfinding() {
-    // const pathfinding = [];
-    // for (let i = 0; i < PATH_GRID_ROWS; i++) {
-    //   pathfinding[i] = [];
-
-    //   for (let k = 0; k < PATH_GRID_COLS; k++) {
-    //     pathfinding[i][k] = WALKABLE;
-    //   }
-    // }
     this.pathfindingGrid = gridData;
     this.easystar.setGrid(gridData);
     this.easystar.setAcceptableTiles([WALKABLE]);
@@ -1047,16 +1067,35 @@ class Game {
     this._setPathfindingTile(pathPoint, setTo);
   }
 
-  _setPathfindingTile(pathPoint: {x: number, y: number}, setTo?: ?Walkability) {
+  _isValidPathfindingTile(pathPoint: {x: number, y: number}) {
     const pathfinding = this.pathfindingGrid;
 
-    if (!pathfinding) return;
-    if (
+    if (!pathfinding) return false;
+
+    return !(
       pathPoint.y < 0 ||
       pathPoint.y >= pathfinding.length ||
       pathPoint.x < 0 ||
       pathPoint.x >= pathfinding[pathPoint.y].length
-    ) {
+    );
+  }
+
+  getPathfindingTile(pathPoint: {x: number, y: number}): ?Walkability {
+    const pathfinding = this.pathfindingGrid;
+
+    if (!pathfinding) return null;
+    if (!this._isValidPathfindingTile(pathPoint)) {
+      return null;
+    }
+
+    return pathfinding[pathPoint.y][pathPoint.x];
+  }
+
+  _setPathfindingTile(pathPoint: {x: number, y: number}, setTo?: ?Walkability) {
+    const pathfinding = this.pathfindingGrid;
+
+    if (!pathfinding) return;
+    if (!this._isValidPathfindingTile(pathPoint)) {
       return;
     }
 
@@ -1184,11 +1223,11 @@ const renderPathfindingGrid = (
     if (!game.pathfindingGrid) return;
     const grid = game.pathfindingGrid;
 
-    const width = Math.floor(PATH_GRID_UNIT_WIDTH);
-    const height = Math.floor(PATH_GRID_UNIT_HEIGHT);
+    const width = PATH_GRID_UNIT_WIDTH;
+    const height = PATH_GRID_UNIT_HEIGHT;
     for (let row = 0; row < grid.length; row++) {
       for (let col = 0; col < grid[row].length; col++) {
-        const pos = game.fromPathfindingCoords({x: col, y: row});
+        const pos = game.tileCenterFromPathfindingCoords({x: col, y: row});
         const {x, y} = pos;
 
         const color =
@@ -1204,8 +1243,8 @@ const renderPathfindingGrid = (
           ctx.strokeRect(
             Math.floor(view.toScreenX(x - width / 2)),
             Math.floor(view.toScreenY(y - height / 2)),
-            width,
-            height
+            Math.floor(width),
+            Math.floor(height)
           );
         }
       }
@@ -1655,6 +1694,9 @@ const Hud = (props: {game: Game}) => {
                 pos: props.game.player.pos,
                 pathGridPos: props.game.toPathfindingCoords(
                   props.game.player.pos
+                ),
+                walkability: props.game.getPathfindingTile(
+                  props.game.toPathfindingCoords(props.game.player.getCenter())
                 ),
               },
               target: target && {
