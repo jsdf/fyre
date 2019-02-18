@@ -24,9 +24,9 @@ const SCALE = 2;
 const DEBUG_OBJECTS = false;
 const DEBUG_AI_TARGETS = false;
 const DEBUG_BBOX = false;
-const DEBUG_PLAYER_STATE = true;
+const DEBUG_PLAYER_STATE = false;
 const DEBUG_PATHFINDING_NODES = false;
-const DEBUG_PATHFINDING_BBOXES = true;
+const DEBUG_PATHFINDING_BBOXES = false;
 const DEBUG_PATH_FOLLOWING = false;
 const DEBUG_PATH_FOLLOWING_STUCK = true;
 const DEBUG_AJACENCY = false;
@@ -1298,9 +1298,13 @@ const renderPoint = (
 const renderPathfindingGrid = (
   ctx: CanvasRenderingContext2D,
   view: View,
-  game: Game
+  game: Game,
+  editorModeState: ?EditorModeState
 ) => {
-  if (DEBUG_PATHFINDING_NODES || DEBUG_PATHFINDING_BBOXES) {
+  const showGrid =
+    DEBUG_PATHFINDING_BBOXES ||
+    (editorModeState && editorModeState.mode === 'pathfinding');
+  if (DEBUG_PATHFINDING_NODES || showGrid) {
     if (!game.pathfindingGrid) return;
     const grid = game.pathfindingGrid;
 
@@ -1318,7 +1322,7 @@ const renderPathfindingGrid = (
         if (DEBUG_PATHFINDING_NODES) {
           renderPoint(ctx, view, pos, color);
         }
-        if (DEBUG_PATHFINDING_BBOXES) {
+        if (showGrid) {
           ctx.strokeStyle = color;
 
           ctx.strokeRect(
@@ -1626,7 +1630,7 @@ const renderTarget = (
   );
 };
 
-function renderFrame(canvas, ctx, game) {
+function renderFrame(canvas, ctx, game, editorModeState) {
   // console.log('start frame');
   ctx.globalCompositeOperation = 'source-over';
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -2162,7 +2166,12 @@ class App extends Component<{}, void> {
     const canvas = this._canvas;
     if (canvas instanceof HTMLCanvasElement) {
       const ctx = canvas.getContext('2d');
-      renderFrame(canvas, ctx, this.game);
+      renderFrame(
+        canvas,
+        ctx,
+        this.game,
+        this.editor ? this.editor.getModeState() : null
+      );
     }
   }
 
