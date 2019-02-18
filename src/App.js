@@ -189,7 +189,8 @@ class GameObject {
   sprite = '';
   bboxStart = new Vec2d(); // top left
   bboxEnd = new Vec2d(); // bottom right
-  enabled = true;
+
+  enabled = true; // visible and collidable
 
   constructor(init?: Vec2dInit) {
     if (init) {
@@ -243,7 +244,7 @@ class Tent extends GameObject {
   damageTaken = 0;
   occupied = false;
   sprite = assets.dstent;
-  bboxStart = new Vec2d({x: 6, y: 11});
+  bboxStart = new Vec2d({x: 6, y: 16});
   bboxEnd = new Vec2d({x: 40, y: 33});
   static MAX_DAMAGE = 1;
   static MAX_PISSINESS = 1;
@@ -368,6 +369,8 @@ class CheeseSandwich extends Powerup {
 
 class Bus extends GameObject {
   sprite = assets.bus;
+  bboxStart = new Vec2d({x: 16, y: 22});
+  bboxEnd = new Vec2d({x: 82, y: 53});
 }
 
 function typeFilter<T>(objs: Array<GameObject>, Typeclass: Class<T>): Array<T> {
@@ -1247,15 +1250,20 @@ class Game {
   _handleCollision(object: GameObject, otherObject: GameObject) {
     if (!otherObject.enabled) return;
     // prevent penetration of solid objects
-    if (object instanceof FestivalGoer && otherObject instanceof Tent) {
-      if (object instanceof Player) {
-        object.pos.sub(object.lastMove);
-      }
-      if (
-        !(object instanceof Player) &&
-        object.target &&
-        object.target === otherObject
-      ) {
+    //
+    if (
+      object instanceof Player &&
+      (otherObject instanceof Tent || otherObject instanceof Bus)
+    ) {
+      object.pos.sub(object.lastMove);
+    }
+
+    if (
+      object instanceof FestivalGoer &&
+      !(object instanceof Player) &&
+      otherObject instanceof Tent
+    ) {
+      if (object.target && object.target === otherObject) {
         object.enterTent(otherObject);
       } else {
         if (DEBUG_PATH_FOLLOWING_STUCK) {
