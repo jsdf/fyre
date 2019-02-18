@@ -25,7 +25,7 @@ const DEBUG_AI_TARGETS = false;
 const DEBUG_BBOX = false;
 const DEBUG_PLAYER_STATE = false;
 const DEBUG_PATHFINDING_NODES = false;
-const DEBUG_PATHFINDING_BBOXES = true;
+const DEBUG_PATHFINDING_BBOXES = false;
 const DEBUG_PATH_FOLLOWING = false;
 const DEBUG_PATH_FOLLOWING_STUCK = true;
 const DEBUG_AJACENCY = false;
@@ -1013,6 +1013,7 @@ class Game {
     this.easystar.setGrid(gridData);
     this.easystar.setAcceptableTiles([WALKABLE]);
     this.easystar.enableDiagonals();
+    this.easystar.disableCornerCutting();
 
     this.easystar.enableSync();
   }
@@ -1020,28 +1021,6 @@ class Game {
   initTentAdjacencies() {
     const tents = typeFilter(this.worldObjects, Tent);
     const tentAdjacencies = new Map();
-
-    // const searchArea = new Vec2d({x: 100, y: 100});
-    // class RangeQuery extends GameObject {}
-    // for (let i = 0; i < tents.length; i++) {
-    //   // simulate range query using collision system
-    //   const center = tents[i].getCenter().clone();
-    //   const range = new RangeQuery(center.sub(searchArea));
-    //   const adjacencyList = [];
-    //   tentAdjacencies.set(tents[i].id, adjacencyList);
-    //   range.bboxStart = new Vec2d({x: 0, y: 0});
-    //   range.bboxEnd = searchArea.clone().multiplyScalar(2);
-
-    //   for (let k = 0; k < tents.length; k++) {
-    //     if (
-    //       i !== k && // ignore self
-    //       collision(tents[k], range)
-    //     ) {
-    //       adjacencyList.push(tents[k].id);
-    //     }
-    //   }
-    // }
-
     for (let i = 0; i < tents.length; i++) {
       const center = tents[i].getCenter();
       const adjacencyList = [];
@@ -1145,7 +1124,9 @@ class Game {
     if (!otherObject.enabled) return;
     // prevent penetration of solid objects
     if (object instanceof FestivalGoer && otherObject instanceof Tent) {
-      object.pos.sub(object.lastMove);
+      if (object instanceof Player) {
+        object.pos.sub(object.lastMove);
+      }
       if (
         !(object instanceof Player) &&
         object.target &&
@@ -1153,7 +1134,9 @@ class Game {
       ) {
         object.enterTent(otherObject);
       } else {
-        object.stuck = true;
+        if (DEBUG_PATH_FOLLOWING_STUCK) {
+          object.stuck = true;
+        }
       }
     }
 
