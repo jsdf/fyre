@@ -17,6 +17,12 @@ export default class Vec2d {
     return new Vec2d(this);
   }
 
+  copyFrom(other: Vec2dInit) {
+    this.x = other.x;
+    this.y = other.y;
+    return this;
+  }
+
   add(other: Vec2dInit) {
     this.x += other.x;
     this.y += other.y;
@@ -79,5 +85,9 @@ export default class Vec2d {
       x: this.x,
       y: this.y,
     };
+  }
+
+  equals(other: Vec2dInit): boolean {
+    return this.x === other.x && this.y === other.y;
   }
 }
