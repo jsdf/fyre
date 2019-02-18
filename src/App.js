@@ -238,13 +238,59 @@ class Tent extends GameObject {
   }
 }
 
+class PowerupState {
+  update(powerup: Powerup): ?PowerupState {
+    // noop
+  }
+
+  toString() {
+    return `${this.constructor.name} {}`;
+  }
+}
+
+class AvailablePowerupState extends PowerupState {}
+
+class PickedUpPowerupState extends PowerupState {
+  startTime = Date.now();
+
+  _initialized = false;
+
+  update(obj: Powerup): ?PowerupState {
+    if (!this._initialized) {
+      this._initialized = true;
+      this.atStart(obj);
+    }
+    if (Date.now() > this.startTime + obj.respawnTime) {
+      this.atEnd(obj);
+      return new AvailablePowerupState();
+    }
+    return null;
+  }
+
+  atStart(obj: Powerup) {
+    playSound(obj.sound);
+    obj.enabled = false;
+  }
+
+  atEnd(obj: Powerup) {
+    obj.enabled = true;
+  }
+}
+
 class Powerup extends GameObject {
   sound = '';
+  respawnTime = 10000;
+  state: PowerupState = new AvailablePowerupState();
   update(game: Game) {
     this.pos.y += Math.sin(game.frame / 10 + this.id % 10);
+
+    const nextState = this.state.update(this);
+    if (nextState) {
+      this.state = nextState;
+    }
   }
   pickedUp(player: Player) {
-    playSound(this.sound);
+    this.state = new PickedUpPowerupState();
   }
 }
 
