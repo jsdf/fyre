@@ -32,7 +32,7 @@ const DEBUG_PATH_FOLLOWING_STUCK = true;
 const DEBUG_AJACENCY = false;
 const DARK = false;
 const DRAW_HUD = true;
-const SOUND_VOLUME = 0;
+const SOUND_VOLUME = 0.5;
 const TENT_ADJACENCY_RADIUS = 100;
 const PERF_FRAMETIME = false;
 const PERF_PATHFINDING = false;
@@ -272,6 +272,7 @@ class Tent extends GameObject {
   pissiness = 0;
   damageTaken = 0;
   occupied = false;
+  captured = false;
   sprite = assets.dstent;
   bboxStart = new Vec2d({x: 6, y: 16});
   bboxEnd = new Vec2d({x: 40, y: 33});
@@ -286,26 +287,44 @@ class Tent extends GameObject {
       }
     }
   }
+
   canDamage() {
     if (this.damageTaken < Tent.MAX_DAMAGE) {
       return true;
     }
     return false;
   }
-  pissOn() {
+
+  canPissOn() {
     if (this.pissiness < Tent.MAX_PISSINESS) {
-      this.pissiness++;
       return true;
     }
     return false;
   }
 
-  isUsable() {
+  pissOn() {
+    if (this.pissiness < Tent.MAX_PISSINESS) {
+      this.pissiness++;
+    }
+  }
+
+  isRuinedByPlayer() {
     return (
-      this.pissiness < Tent.MAX_PISSINESS &&
-      this.damageTaken < Tent.MAX_DAMAGE &&
-      !this.occupied
+      this.pissiness >= Tent.MAX_PISSINESS ||
+      this.damageTaken >= Tent.MAX_DAMAGE
     );
+  }
+
+  isUsable() {
+    return !this.isRuinedByPlayer() && !this.occupied;
+  }
+
+  capture() {
+    this.captured = true;
+  }
+
+  occupy() {
+    this.occupied = true;
   }
 }
 
@@ -460,14 +479,17 @@ class FestivalGoer extends GameObject {
   static DIALOG_VISIBLE_TIME = 3000;
   static DIALOG_CHANCE = 10000;
 
-  enterTent(tent: Tent) {
-    if (!tent.isUsable()) {
+  enterTent(tent: Tent, game: Game) {
+    if (!tent.isUsable() || tent.captured) {
       // give up on this one, find another
       this.clearTarget();
     } else {
       this.enabled = false;
-      tent.occupied = true;
+      tent.occupy();
+
+      game.checkForGroupsAdjacent(tent);
       playSound(sounds.occupy);
+      game.removeWorldObject(this);
     }
   }
 
@@ -726,7 +748,14 @@ class TimedAttackState extends PlayerState {
 
 class PissingState extends TimedAttackState {
   sound = sounds.piss;
+
+  exit(game: Game) {
+    this.target.pissOn();
+
+    game.checkForGroupsAdjacent(this.target);
+  }
 }
+
 class SmashingState extends TimedAttackState {
   sound = sounds.smash;
   animation = new Smoke(this.target.pos.clone().add({x: 4, y: 0}));
@@ -738,6 +767,7 @@ class SmashingState extends TimedAttackState {
   exit(game: Game) {
     game.removeWorldObject(this.animation);
     this.target.doDamage();
+    game.checkForGroupsAdjacent(this.target);
   }
 }
 
@@ -844,7 +874,7 @@ class Player extends FestivalGoer {
   }
 
   doPiss(tent: Tent, game: Game) {
-    if (this.piss && tent.pissOn()) {
+    if (this.piss && tent.canPissOn()) {
       this.score += 100;
       this.piss--;
       this.transitionTo(new PissingState(tent), game);
@@ -992,6 +1022,7 @@ class Game {
   easystar = new EasyStar.js();
   tileGrid: ?Array<Array<number>> = null;
   tentAdjacencies: Map<number, Array<number>> = new Map();
+  tentColors: Map<number, ?string> = new Map();
 
   constructor() {
     this._initGrid();
@@ -1242,7 +1273,7 @@ class Game {
 
       setTimeout(() => {
         this._spawnPeopleLoop(remaining);
-      }, 20000);
+      }, 5000);
     }
   };
 
@@ -1264,8 +1295,10 @@ class Game {
   _detectCollisions() {
     for (let i = this.worldObjects.length - 1; i >= 0; i--) {
       const object = this.worldObjects[i];
+      if (!object.enabled) continue;
       for (let k = this.worldObjects.length - 1; k >= 0; k--) {
         const otherObject = this.worldObjects[k];
+        if (!otherObject.enabled) continue;
         if (object !== otherObject) {
           if (collision(object, otherObject)) {
             this._handleCollision(object, otherObject);
@@ -1292,7 +1325,7 @@ class Game {
       otherObject instanceof Tent
     ) {
       if (object.target && object.target === otherObject) {
-        object.enterTent(otherObject);
+        object.enterTent(otherObject, this);
       } else {
         if (DEBUG_PATH_FOLLOWING_STUCK) {
           object.stuck = true;
@@ -1303,6 +1336,70 @@ class Game {
     if (object instanceof Player && otherObject instanceof Powerup) {
       otherObject.pickedUp(object);
     }
+  }
+
+  checkForGroupsAdjacent(start: Tent) {
+    this.tentColors.clear();
+
+    typeFilter(this.worldObjects, Tent).forEach(tent =>
+      this._checkAndColorGraph(tent)
+    );
+  }
+
+  _checkAndColorGraph(start: Tent) {
+    const {visited, containsOccupant} = this._checkForGroup(start);
+
+    visited.forEach(tent => {
+      if (tent.isRuinedByPlayer()) {
+        this.tentColors.set(tent.id, 'green');
+      } else {
+        if (visited.size > 10) {
+        } else {
+          if (containsOccupant) {
+            this.tentColors.set(tent.id, 'red');
+          } else {
+            this.tentColors.set(tent.id, 'blue');
+          }
+        }
+      }
+    });
+  }
+
+  _checkForGroup(start: Tent) {
+    const visited = new Set();
+    let containsOccupant = false;
+
+    const visit = (tent: Tent) => {
+      if (tent.isRuinedByPlayer()) {
+        // always stop here
+        return;
+      }
+      visited.add(tent);
+      if (tent.occupied) {
+        containsOccupant = true;
+      }
+
+      const adjacencies = this.tentAdjacencies.get(tent.id);
+      if (!adjacencies) {
+        return console.error('missing adjacencies from', tent);
+      }
+
+      for (let i = 0; i < adjacencies.length; i++) {
+        const adjacentTent = this.worldObjectsByID.get(adjacencies[i]);
+
+        if (adjacentTent instanceof Tent) {
+          if (!visited.has(adjacentTent)) {
+            visit(adjacentTent);
+          }
+        } else {
+          console.error('invalid adjacent tent', adjacencies[i], adjacentTent);
+        }
+      }
+    };
+
+    visit(start);
+
+    return {visited, containsOccupant};
   }
 }
 
@@ -1535,9 +1632,10 @@ const renderDebugCircle = (
   ctx: CanvasRenderingContext2D,
   view: View,
   pos: Vec2d,
-  radius: number
+  radius: number,
+  color: string = 'red'
 ) => {
-  ctx.strokeStyle = 'red';
+  ctx.strokeStyle = color;
   ctx.beginPath();
   ctx.arc(
     Math.floor(view.toScreenX(pos.x)),
@@ -1558,10 +1656,10 @@ const renderObjectImage = (
   if (image) {
     ctx.drawImage(
       image,
-      view.toScreenX(Math.floor(obj.pos.x)),
-      view.toScreenY(Math.floor(obj.pos.y)),
-      image.width,
-      image.height
+      Math.floor(view.toScreenX(obj.pos.x)),
+      Math.floor(view.toScreenY(obj.pos.y)),
+      Math.floor(image.width),
+      Math.floor(image.height)
     );
   }
 
@@ -1573,7 +1671,7 @@ const renderObjectImage = (
       view.toScreenX(obj.pos.x),
       view.toScreenY(obj.pos.y)
     );
-    renderPoint(ctx, view, obj.getCenter(), 'orange');
+    // renderPoint(ctx, view, obj.getCenter(), 'orange');
   }
   if (DEBUG_BBOX) {
     renderBBox(ctx, view, obj);
@@ -1591,10 +1689,10 @@ const renderImage = (
 
   ctx.drawImage(
     image,
-    view.toScreenX(Math.floor(pos.x)),
-    view.toScreenY(Math.floor(pos.y)),
-    image.width,
-    image.height
+    Math.floor(view.toScreenX(pos.x)),
+    Math.floor(view.toScreenY(pos.y)),
+    Math.floor(image.width),
+    Math.floor(image.height)
   );
 };
 
@@ -1656,7 +1754,9 @@ const renderTarget = (
   );
 
   const label =
-    game.player.target && game.player.withinAttackRange(game.player.target)
+    game.player.target &&
+    (game.player.withinAttackRange(game.player.target) &&
+      game.player.energy > 0)
       ? `smash`
       : `piss on`;
   ctx.font = '10px monospace';
@@ -1747,6 +1847,11 @@ function renderFrame(canvas, ctx, game, editorModeState) {
         }
       }
     } else if (obj instanceof Tent) {
+      const color = game.tentColors.get(obj.id);
+      if (color != null) {
+        renderPoint(ctx, game.view, obj.getCenter(), color);
+      }
+
       if (DEBUG_AJACENCY) {
         renderDebugCircle(
           ctx,
