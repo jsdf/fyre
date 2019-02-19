@@ -1206,17 +1206,23 @@ class Game {
   }
 
   _startSpawningPeople() {
-    let population = 0;
-    const interval = setInterval(() => {
-      if (population++ > 20) {
-        clearInterval(interval);
+    this._spawnPeopleLoop(20);
+  }
+
+  _spawnPeopleLoop = remaining => {
+    if (remaining > 0) {
+      // spawn up to 3 people
+      const spawnUntilRemaining = Math.max(remaining - 3, 0);
+      while (remaining > spawnUntilRemaining) {
+        this._spawnPerson();
+        remaining--;
       }
 
-      this._spawnPerson();
-      this._spawnPerson();
-      this._spawnPerson();
-    }, 5000);
-  }
+      setTimeout(() => {
+        this._spawnPeopleLoop(remaining);
+      }, 20000);
+    }
+  };
 
   update() {
     for (let i = 0; i < this.worldObjects.length; i++) {
@@ -1643,7 +1649,7 @@ const renderTarget = (
 };
 
 function renderFrame(canvas, ctx, game, editorModeState) {
-  // console.log('start frame');
+  // console.time('render frame');
   ctx.globalCompositeOperation = 'source-over';
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   renderBG(ctx, game.view);
@@ -1656,7 +1662,6 @@ function renderFrame(canvas, ctx, game, editorModeState) {
       return;
     }
     if (!game.view.inView(obj)) {
-      // console.log('skipping', obj.toString());
       return;
     }
     if (obj instanceof Player) {
@@ -1761,7 +1766,7 @@ function renderFrame(canvas, ctx, game, editorModeState) {
   if (target) {
     renderTarget(ctx, game.view, target, game);
   }
-  // console.log('end frame');
+  // console.timeEnd('render frame');
 }
 
 const Hud = (props: {game: Game}) => {
@@ -2239,7 +2244,7 @@ class App extends Component<{}, void> {
         />
 
         {DRAW_HUD && <Hud game={this.game} />}
-        <Editor ref={this._onRef} game={this.game} />
+        {!PROD_OPTIMIZE && <Editor ref={this._onRef} game={this.game} />}
       </div>
     );
   }
