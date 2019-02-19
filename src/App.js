@@ -171,6 +171,16 @@ function precacheAudioAssets() {
   Object.keys(sounds).forEach(key => getSound(sounds[key]));
 }
 
+function frameCycle(
+  frameAssets: Array<$Values<typeof assets>>,
+  framelength: number,
+  tick: number
+) {
+  return frameAssets[
+    Math.floor(Math.floor(tick / framelength) % frameAssets.length)
+  ];
+}
+
 type Direction = 'up' | 'down' | 'left' | 'right';
 const DIRECTIONS: Array<Direction> = ['up', 'down', 'left', 'right'];
 type KeyStates = {['up' | 'down' | 'left' | 'right' | 'attack']: boolean};
@@ -236,6 +246,20 @@ class GameObject {
     return `${this.constructor.name} {x: ${this.pos.x.toFixed(
       2
     )}, y: ${this.pos.y.toFixed(2)}}`;
+  }
+}
+
+class Smoke extends GameObject {
+  static ANIM = [assets.smoke1, assets.smoke2, assets.smoke3];
+
+  static FRAMES_PER_ANIM_FRAME = 6;
+
+  update(game: Game) {
+    this.sprite = frameCycle(
+      Smoke.ANIM,
+      Smoke.FRAMES_PER_ANIM_FRAME,
+      game.frame
+    );
   }
 }
 
@@ -655,12 +679,11 @@ class FestivalGoer extends GameObject {
 
   animUpdate(game: Game) {
     if (this.isMoving) {
-      this.sprite = this.walkAnim[
-        Math.floor(
-          Math.floor(game.frame / FestivalGoer.FRAMES_PER_ANIM_FRAME) %
-            this.walkAnim.length
-        )
-      ];
+      this.sprite = frameCycle(
+        this.walkAnim,
+        FestivalGoer.FRAMES_PER_ANIM_FRAME,
+        game.frame
+      );
     } else {
       this.sprite = this.stillSprite;
     }

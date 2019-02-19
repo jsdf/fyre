@@ -20,4 +20,7 @@ export default {
   occupied: require('./assets/occupied.png'),
   bus: require('./assets/bus.png'),
   bg: require('./assets/bg.png'),
+  smoke1: require('./assets/smoke1.png'),
+  smoke2: require('./assets/smoke2.png'),
+  smoke3: require('./assets/smoke3.png'),
 };
