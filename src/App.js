@@ -201,6 +201,7 @@ class GameObject {
   bboxEnd = new Vec2d(); // bottom right
 
   enabled = true; // visible and collidable
+  zLayer = 0;
 
   constructor(init?: Vec2dInit) {
     if (init) {
@@ -250,6 +251,8 @@ class GameObject {
 }
 
 class Smoke extends GameObject {
+  zLayer = 1;
+
   static ANIM = [assets.smoke1, assets.smoke2, assets.smoke3];
 
   static FRAMES_PER_ANIM_FRAME = 6;
@@ -691,7 +694,15 @@ class FestivalGoer extends GameObject {
 }
 
 class PlayerState {
-  update(player: Player): ?PlayerState {}
+  update(game: Game): ?PlayerState {}
+
+  enter(game: Game) {
+    // noop
+  }
+
+  exit(game: Game) {
+    // noop
+  }
 
   toString() {
     return `${this.constructor.name} {}`;
@@ -706,30 +717,19 @@ class TimedAttackState extends PlayerState {
   startTime = Date.now();
   target: Tent;
 
-  _initialized = false;
-
   constructor(target: Tent) {
     super();
     this.target = target;
   }
 
-  update(player: Player): ?PlayerState {
-    if (!this._initialized) {
-      this._initialized = true;
-      this.enter();
-    }
+  update(): ?PlayerState {
     if (Date.now() > this.startTime + this.duration) {
-      this.exit();
       return new IdleState();
     }
   }
 
-  enter() {
+  enter(game: Game) {
     playSound(this.sound);
-  }
-
-  exit() {
-    // noop
   }
 
   toString() {
@@ -740,9 +740,16 @@ class TimedAttackState extends PlayerState {
 class PissingState extends TimedAttackState {
   sound = sounds.piss;
 }
-class AttackingState extends TimedAttackState {
+class SmashingState extends TimedAttackState {
   sound = sounds.smash;
-  exit() {
+  animation = new Smoke(this.target.pos.clone().add({x: 4, y: 0}));
+
+  enter(game: Game) {
+    super.enter(game);
+    game.addWorldObject(this.animation);
+  }
+  exit(game: Game) {
+    game.removeWorldObject(this.animation);
     this.target.doDamage();
   }
 }
@@ -784,7 +791,7 @@ class Player extends FestivalGoer {
     if (
       (playerMove.x !== 0 || playerMove.y !== 0) &&
       // can't move in attacking state
-      !(this.state instanceof AttackingState)
+      !(this.state instanceof SmashingState)
     ) {
       playerMove = getMovementVelocity(playerMove, Player.MOVEMENT_SPEED);
       const lastPos = this.pos.clone();
@@ -820,33 +827,40 @@ class Player extends FestivalGoer {
 
     if (game.keys.attack && target && this.state instanceof IdleState) {
       if (this.withinAttackRange(target)) {
-        this.doAttack(target);
+        this.doSmash(target, game);
       } else {
-        this.doPiss(target);
+        this.doPiss(target, game);
       }
     }
 
-    const nextState = this.state.update(this);
+    const nextState = this.state.update(game);
     if (nextState) {
-      this.state = nextState;
+      this.transitionTo(nextState, game);
     }
 
     this.animUpdate(game);
   }
 
-  doAttack(tent: Tent) {
+  transitionTo(nextState: PlayerState, game: Game) {
+    this.state.exit(game);
+    this.state = nextState;
+    this.state.enter(game);
+  }
+
+  doSmash(tent: Tent, game: Game) {
     if (this.energy && tent.canDamage()) {
       this.score += 100;
       this.energy--;
-      this.state = new AttackingState(tent);
+
+      this.transitionTo(new SmashingState(tent), game);
     }
   }
 
-  doPiss(tent: Tent) {
+  doPiss(tent: Tent, game: Game) {
     if (this.piss && tent.pissOn()) {
       this.score += 100;
       this.piss--;
-      this.state = new PissingState(tent);
+      this.transitionTo(new PissingState(tent), game);
     }
   }
 }
@@ -1677,10 +1691,12 @@ function renderFrame(canvas, ctx, game, editorModeState) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   renderBG(ctx, game.view);
 
-  const ySortedObjects = game.worldObjects
-    .slice()
-    .sort((a, b) => a.getMax().y - b.getMax().y);
-  ySortedObjects.forEach((obj, i) => {
+  const zSortedObjects = game.worldObjects.slice().sort((a, b) => {
+    // first sort into z layers then by y position
+    if (a.zLayer !== b.zLayer) return a.zLayer - b.zLayer;
+    return a.getMax().y - b.getMax().y;
+  });
+  zSortedObjects.forEach((obj, i) => {
     if (!obj.enabled) {
       return;
     }
@@ -1711,7 +1727,7 @@ function renderFrame(canvas, ctx, game, editorModeState) {
 
   // render stuff above tint
   renderPathfindingGrid(ctx, game.view, game, editorModeState);
-  ySortedObjects.forEach((obj, i) => {
+  zSortedObjects.forEach((obj, i) => {
     if (!obj.enabled) {
       return;
     }
