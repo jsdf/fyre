@@ -324,21 +324,21 @@ class PickedUpPowerupState extends PowerupState {
   update(obj: Powerup): ?PowerupState {
     if (!this._initialized) {
       this._initialized = true;
-      this.atStart(obj);
+      this.enter(obj);
     }
     if (Date.now() > this.startTime + obj.respawnTime) {
-      this.atEnd(obj);
+      this.exit(obj);
       return new AvailablePowerupState();
     }
     return null;
   }
 
-  atStart(obj: Powerup) {
+  enter(obj: Powerup) {
     playSound(obj.sound);
     obj.enabled = false;
   }
 
-  atEnd(obj: Powerup) {
+  exit(obj: Powerup) {
     obj.enabled = true;
   }
 }
@@ -716,19 +716,19 @@ class TimedAttackState extends PlayerState {
   update(player: Player): ?PlayerState {
     if (!this._initialized) {
       this._initialized = true;
-      this.atStart();
+      this.enter();
     }
     if (Date.now() > this.startTime + this.duration) {
-      this.atEnd();
+      this.exit();
       return new IdleState();
     }
   }
 
-  atStart() {
+  enter() {
     playSound(this.sound);
   }
 
-  atEnd() {
+  exit() {
     // noop
   }
 
@@ -742,7 +742,7 @@ class PissingState extends TimedAttackState {
 }
 class AttackingState extends TimedAttackState {
   sound = sounds.smash;
-  atEnd() {
+  exit() {
     this.target.doDamage();
   }
 }
