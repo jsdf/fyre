@@ -34,6 +34,8 @@ const DARK = false;
 const DRAW_HUD = true;
 const SOUND_VOLUME = 0;
 const TENT_ADJACENCY_RADIUS = 100;
+const PERF_FRAMETIME = false;
+const PERF_PATHFINDING = false;
 
 function range(size: number) {
   return Array(size)
@@ -484,27 +486,24 @@ class FestivalGoer extends GameObject {
     target: {x: number, y: number},
     searchRadius: number
   ) {
-    const {pathfindingGrid} = game;
-    if (pathfindingGrid == null) {
-      console.error('pathfindingGrid not initialized');
+    const {tileGrid} = game;
+    if (tileGrid == null) {
+      console.error('tileGrid not initialized');
       return;
     }
     // find nearest walkable tile
     const candidates = [];
     for (let rowRel = -1 * searchRadius; rowRel < searchRadius; rowRel++) {
       for (let colRel = -1 * searchRadius; colRel < searchRadius; colRel++) {
-        const pathfindingPos = {x: target.x + colRel, y: target.y + rowRel};
-        const gamePos = game.tileCenterFromPathfindingCoords(pathfindingPos);
-        const pathfindingPosClamped = game.toPathfindingCoords(gamePos);
+        const gridPos = {x: target.x + colRel, y: target.y + rowRel};
+        const worldPos = game.tileCenterFromGridCoords(gridPos);
+        const gridPosClamped = game.toGridCoords(worldPos);
         candidates.push({
-          pathfindingPos,
+          gridPos,
           distance: this.getCenter().distanceTo(
-            game.tileCenterFromPathfindingCoords(pathfindingPos)
+            game.tileCenterFromGridCoords(gridPos)
           ),
-          walkable:
-            pathfindingGrid[pathfindingPosClamped.y][
-              pathfindingPosClamped.x
-            ] === WALKABLE,
+          walkable: tileGrid[gridPosClamped.y][gridPosClamped.x] === WALKABLE,
         });
       }
     }
@@ -514,25 +513,25 @@ class FestivalGoer extends GameObject {
       .sort((a, b) => a.distance - b.distance);
 
     if (bestCandidates.length > 0) {
-      return bestCandidates[0].pathfindingPos;
+      return bestCandidates[0].gridPos;
     }
     return null;
   }
 
   findPath(game: Game, target: Tent) {
     this.isPathfinding = true;
-    let start = game.toPathfindingCoords(this.getCenter());
-    let end = game.toPathfindingCoords(target.getCenter());
+    let start = game.toGridCoords(this.getCenter());
+    let end = game.toGridCoords(target.getCenter());
 
-    const {pathfindingGrid} = game;
-    if (pathfindingGrid == null) {
-      console.error('pathfindingGrid not initialized');
+    const {tileGrid} = game;
+    if (tileGrid == null) {
+      console.error('tileGrid not initialized');
       return;
     }
 
     const searchRadius = Game.PATH_GRID_TENT_SIZE; // more than the width of a tent
 
-    if (pathfindingGrid[start.y][start.x] !== WALKABLE) {
+    if (tileGrid[start.y][start.x] !== WALKABLE) {
       const improvedStart = this.findNearestWalkableTile(
         game,
         start,
@@ -542,18 +541,18 @@ class FestivalGoer extends GameObject {
         start = improvedStart;
       }
     }
-    if (pathfindingGrid[end.y][end.x] !== WALKABLE) {
+    if (tileGrid[end.y][end.x] !== WALKABLE) {
       const improvedEnd = this.findNearestWalkableTile(game, end, searchRadius);
       if (improvedEnd) {
         end = improvedEnd;
       }
     }
 
-    if (pathfindingGrid[start.y][start.x] !== WALKABLE) {
+    if (tileGrid[start.y][start.x] !== WALKABLE) {
       console.error('pathfinding: start is unwalkable');
       return;
     }
-    if (pathfindingGrid[end.y][end.x] !== WALKABLE) {
+    if (tileGrid[end.y][end.x] !== WALKABLE) {
       console.error('pathfinding: end is unwalkable');
       return;
     }
@@ -570,31 +569,19 @@ class FestivalGoer extends GameObject {
               gridPath.length === 0
                 ? [target.pos]
                 : gridPath.map(gridPoint =>
-                    game.tileCenterFromPathfindingCoords(gridPoint)
+                    game.tileCenterFromGridCoords(gridPoint)
                   )
             );
+            this.isPathfinding = false;
 
-            const nextPoint = this.path.getNextPoint();
-
-            if (false && nextPoint && this.pos.distanceTo(nextPoint) > 100) {
-              console.error(
-                'garbage pathfinding result',
-                this,
-                {start, end},
-                this.path
+            PERF_PATHFINDING &&
+              console.log(
+                'pathfinding for',
+                this.id,
+                'took',
+                (performance.now() - startTime).toFixed(2),
+                'ms'
               );
-              this.path = null;
-            } else {
-              this.isPathfinding = false;
-            }
-
-            console.log(
-              'pathfinding for ',
-              this.id,
-              'took',
-              (performance.now() - startTime).toFixed(2),
-              'ms'
-            );
           }
         }
       });
@@ -797,8 +784,8 @@ class Player extends FestivalGoer {
       const lastPos = this.pos.clone();
       this.pos.add(playerMove);
       const updatedCenter = this.getCenter();
-      const walkability = game.getPathfindingTile(
-        game.toPathfindingCoordsUnclamped(updatedCenter)
+      const walkability = game.getGridTile(
+        game.toGridCoordsUnclamped(updatedCenter)
       );
       if (walkability == null || walkability === UNWALKABLE) {
         // revert pos
@@ -1003,11 +990,11 @@ class Game {
   view = new View();
 
   easystar = new EasyStar.js();
-  pathfindingGrid: ?Array<Array<number>> = null;
+  tileGrid: ?Array<Array<number>> = null;
   tentAdjacencies: Map<number, Array<number>> = new Map();
 
   constructor() {
-    this._initPathfinding();
+    this._initGrid();
     this._spawnObjects();
 
     this.addWorldObject(this.player);
@@ -1090,7 +1077,7 @@ class Game {
     })
   );
 
-  toPathfindingCoords(pos: Vec2d) {
+  toGridCoords(pos: Vec2d) {
     const x = clamp(
       Math.floor((pos.x - Game.PATH_GRID_OFFSET.x) / PATH_GRID_UNIT_WIDTH),
       0,
@@ -1106,7 +1093,7 @@ class Game {
     }
     return {x, y};
   }
-  toPathfindingCoordsUnclamped(pos: Vec2d) {
+  toGridCoordsUnclamped(pos: Vec2d) {
     const x = Math.floor(
       (pos.x - Game.PATH_GRID_OFFSET.x) / PATH_GRID_UNIT_WIDTH
     );
@@ -1118,13 +1105,13 @@ class Game {
     }
     return {x, y};
   }
-  tileCenterFromPathfindingCoords(point: {x: number, y: number}) {
+  tileCenterFromGridCoords(point: {x: number, y: number}) {
     const pos = new Vec2d();
     pos.x = Game.PATH_GRID_OFFSET.x + (point.x + 0.5) * PATH_GRID_UNIT_WIDTH;
     pos.y = Game.PATH_GRID_OFFSET.y + (point.y + 0.5) * PATH_GRID_UNIT_HEIGHT;
     return pos;
   }
-  tileFloorFromPathfindingCoords(point: {x: number, y: number}) {
+  tileFloorFromGridCoords(point: {x: number, y: number}) {
     const pos = new Vec2d();
     pos.x = Game.PATH_GRID_OFFSET.x + point.x * PATH_GRID_UNIT_WIDTH;
     pos.y = Game.PATH_GRID_OFFSET.y + point.y * PATH_GRID_UNIT_HEIGHT;
@@ -1134,27 +1121,27 @@ class Game {
   _makeObjectBBoxUnwalkable(obj: GameObject) {
     const objBBoxStart = obj.pos.clone().add(obj.bboxStart);
     const objBBoxEnd = obj.pos.clone().add(obj.bboxEnd);
-    const objPathfindingStartPos = this.toPathfindingCoords(objBBoxStart);
-    const objPathfindingEndPos = this.toPathfindingCoords(objBBoxEnd);
+    const objGridStartPos = this.toGridCoords(objBBoxStart);
+    const objGridEndPos = this.toGridCoords(objBBoxEnd);
 
-    // set interecting pathfinding tiles unwalkable
+    // set interecting grid tiles unwalkable
     for (
-      let pathRow = objPathfindingStartPos.y;
-      pathRow <= objPathfindingEndPos.y;
+      let pathRow = objGridStartPos.y;
+      pathRow <= objGridEndPos.y;
       pathRow++
     ) {
       for (
-        let pathCol = objPathfindingStartPos.x;
-        pathCol <= objPathfindingEndPos.x;
+        let pathCol = objGridStartPos.x;
+        pathCol <= objGridEndPos.x;
         pathCol++
       ) {
-        this.setPathfindingTile({x: pathCol, y: pathRow}, AI_UNWALKABLE);
+        this.setGridTile({x: pathCol, y: pathRow}, AI_UNWALKABLE);
       }
     }
   }
 
-  _initPathfinding() {
-    this.pathfindingGrid = gridData;
+  _initGrid() {
+    this.tileGrid = gridData;
     this.easystar.setGrid(gridData);
     this.easystar.setAcceptableTiles([WALKABLE]);
     this.easystar.enableDiagonals();
@@ -1184,53 +1171,51 @@ class Game {
     this.tentAdjacencies = tentAdjacencies;
   }
 
-  togglePathfindingTile(pathPoint: {x: number, y: number}) {
-    this._setPathfindingTile(pathPoint);
+  toggleGridTile(pathPoint: {x: number, y: number}) {
+    this._setGridTile(pathPoint);
   }
 
-  setPathfindingTile(pathPoint: {x: number, y: number}, setTo: Walkability) {
-    this._setPathfindingTile(pathPoint, setTo);
+  setGridTile(pathPoint: {x: number, y: number}, setTo: Walkability) {
+    this._setGridTile(pathPoint, setTo);
   }
 
-  _isValidPathfindingTile(pathPoint: {x: number, y: number}) {
-    const pathfinding = this.pathfindingGrid;
+  _isValidGridTile(pathPoint: {x: number, y: number}) {
+    const grid = this.tileGrid;
 
-    if (!pathfinding) return false;
+    if (!grid) return false;
 
     return !(
       pathPoint.y < 0 ||
-      pathPoint.y >= pathfinding.length ||
+      pathPoint.y >= grid.length ||
       pathPoint.x < 0 ||
-      pathPoint.x >= pathfinding[pathPoint.y].length
+      pathPoint.x >= grid[pathPoint.y].length
     );
   }
 
-  getPathfindingTile(pathPoint: {x: number, y: number}): ?Walkability {
-    const pathfinding = this.pathfindingGrid;
+  getGridTile(pathPoint: {x: number, y: number}): ?Walkability {
+    const grid = this.tileGrid;
 
-    if (!pathfinding) return null;
-    if (!this._isValidPathfindingTile(pathPoint)) {
+    if (!grid) return null;
+    if (!this._isValidGridTile(pathPoint)) {
       return null;
     }
 
-    return pathfinding[pathPoint.y][pathPoint.x];
+    return grid[pathPoint.y][pathPoint.x];
   }
 
-  _setPathfindingTile(pathPoint: {x: number, y: number}, setTo?: ?Walkability) {
-    const pathfinding = this.pathfindingGrid;
+  _setGridTile(pathPoint: {x: number, y: number}, setTo?: ?Walkability) {
+    const grid = this.tileGrid;
 
-    if (!pathfinding) return;
-    if (!this._isValidPathfindingTile(pathPoint)) {
+    if (!grid) return;
+    if (!this._isValidGridTile(pathPoint)) {
       return;
     }
 
-    pathfinding[pathPoint.y][pathPoint.x] =
+    grid[pathPoint.y][pathPoint.x] =
       setTo == null
-        ? pathfinding[pathPoint.y][pathPoint.x] === WALKABLE
-          ? AI_UNWALKABLE
-          : WALKABLE // toggle
+        ? grid[pathPoint.y][pathPoint.x] === WALKABLE ? AI_UNWALKABLE : WALKABLE // toggle
         : setTo;
-    this.easystar.setGrid(pathfinding);
+    this.easystar.setGrid(grid);
   }
 
   _spawnPerson() {
@@ -1350,7 +1335,7 @@ const renderPoint = (
   ctx.fillRect(x, y, width, height);
 };
 
-const renderPathfindingGrid = (
+const renderGridGrid = (
   ctx: CanvasRenderingContext2D,
   view: View,
   game: Game,
@@ -1358,16 +1343,16 @@ const renderPathfindingGrid = (
 ) => {
   const showGrid =
     DEBUG_PATHFINDING_BBOXES ||
-    (editorModeState && editorModeState.mode === 'pathfinding');
+    (editorModeState && editorModeState.mode === 'grid');
   if (DEBUG_PATHFINDING_NODES || showGrid) {
-    if (!game.pathfindingGrid) return;
-    const grid = game.pathfindingGrid;
+    if (!game.tileGrid) return;
+    const grid = game.tileGrid;
 
     const width = PATH_GRID_UNIT_WIDTH;
     const height = PATH_GRID_UNIT_HEIGHT;
     for (let row = 0; row < grid.length; row++) {
       for (let col = 0; col < grid[row].length; col++) {
-        const pos = game.tileCenterFromPathfindingCoords({x: col, y: row});
+        const pos = game.tileCenterFromGridCoords({x: col, y: row});
         const {x, y} = pos;
 
         const color =
@@ -1686,7 +1671,7 @@ const renderTarget = (
 };
 
 function renderFrame(canvas, ctx, game, editorModeState) {
-  // console.time('render frame');
+  PERF_FRAMETIME && console.time('render frame');
   ctx.globalCompositeOperation = 'source-over';
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   renderBG(ctx, game.view);
@@ -1726,7 +1711,7 @@ function renderFrame(canvas, ctx, game, editorModeState) {
   }
 
   // render stuff above tint
-  renderPathfindingGrid(ctx, game.view, game, editorModeState);
+  renderGridGrid(ctx, game.view, game, editorModeState);
   zSortedObjects.forEach((obj, i) => {
     if (!obj.enabled) {
       return;
@@ -1805,7 +1790,7 @@ function renderFrame(canvas, ctx, game, editorModeState) {
   if (target) {
     renderTarget(ctx, game.view, target, game);
   }
-  // console.timeEnd('render frame');
+  PERF_FRAMETIME && console.timeEnd('render frame');
 }
 
 const Hud = (props: {game: Game}) => {
@@ -1837,11 +1822,9 @@ const Hud = (props: {game: Game}) => {
               player: {
                 state: props.game.player.state.toString(),
                 pos: props.game.player.pos,
-                pathGridPos: props.game.toPathfindingCoords(
-                  props.game.player.pos
-                ),
-                walkability: props.game.getPathfindingTile(
-                  props.game.toPathfindingCoords(props.game.player.getCenter())
+                gridPos: props.game.toGridCoords(props.game.player.pos),
+                walkability: props.game.getGridTile(
+                  props.game.toGridCoords(props.game.player.getCenter())
                 ),
               },
               target: target && {
@@ -1883,7 +1866,7 @@ type EditorObjectsModeCommand = {
 };
 
 type EditorModeState =
-  | {|mode: 'pathfinding', paint: Walkability, brushSize: number|}
+  | {|mode: 'grid', paint: Walkability, brushSize: number|}
   | {|
       mode: 'objects',
       submode: 'add' | 'delete',
@@ -1963,10 +1946,10 @@ class Editor extends React.Component<
     const game = this.props.game;
     const state = this.getModeState();
     switch (state.mode) {
-      case 'pathfinding': {
-        const pathPoint = game.toPathfindingCoords(pos);
+      case 'grid': {
+        const pathPoint = game.toGridCoords(pos);
         if (state.brushSize === 1) {
-          game.setPathfindingTile(pathPoint, state.paint);
+          game.setGridTile(pathPoint, state.paint);
         } else {
           const halfBrushSize = Math.floor(state.brushSize / 2);
 
@@ -1980,7 +1963,7 @@ class Editor extends React.Component<
               y <= pathPoint.y + halfBrushSize;
               y++
             ) {
-              game.setPathfindingTile({x, y}, state.paint);
+              game.setGridTile({x, y}, state.paint);
             }
           }
         }
@@ -1996,8 +1979,8 @@ class Editor extends React.Component<
   }
   _initMode(name: $PropertyType<EditorModeState, 'mode'>): EditorModeState {
     switch (name) {
-      case 'pathfinding':
-        return {mode: 'pathfinding', paint: UNWALKABLE, brushSize: 1};
+      case 'grid':
+        return {mode: 'grid', paint: UNWALKABLE, brushSize: 1};
       case 'objects':
         return {mode: 'objects', submode: 'add', type: Tent, history: []};
       case 'play': {
@@ -2016,7 +1999,7 @@ class Editor extends React.Component<
   _handleEditorModeChange = () => {
     const state = this.getModeState();
     const prevMode = state.mode;
-    const nextMode = Editor.cycle(['play', 'objects', 'pathfinding'], prevMode);
+    const nextMode = Editor.cycle(['play', 'objects', 'grid'], prevMode);
     this.updateModeState(this._initMode(nextMode));
   };
   _handleObjectTypeChange = () => {
@@ -2029,7 +2012,7 @@ class Editor extends React.Component<
   };
   _handlePaintChange = () => {
     const state = this.getModeState();
-    if (state.mode !== 'pathfinding') return;
+    if (state.mode !== 'grid') return;
     this.updateModeState({
       ...state,
       paint: Editor.cycle([WALKABLE, AI_UNWALKABLE, UNWALKABLE], state.paint),
@@ -2037,7 +2020,7 @@ class Editor extends React.Component<
   };
   _handleBrushSizeChange = () => {
     const state = this.getModeState();
-    if (state.mode !== 'pathfinding') return;
+    if (state.mode !== 'grid') return;
     this.updateModeState({
       ...state,
       brushSize: Editor.cycle([1, 3, 5], state.brushSize),
@@ -2070,7 +2053,7 @@ class Editor extends React.Component<
 
   _renderModeMenu(state: EditorModeState) {
     switch (state.mode) {
-      case 'pathfinding': {
+      case 'grid': {
         return (
           <div style={Editor.RIGHT_ALIGN}>
             <button onClick={this._handlePaintChange}>
