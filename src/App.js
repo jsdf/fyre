@@ -23,6 +23,7 @@ const PATH_GRID_UNIT_HEIGHT = 64 / PATH_GRID_SUBDIV;
 const SCALE = 2;
 const DEBUG_OBJECTS = false;
 const DEBUG_AI_TARGETS = false;
+const DEBUG_AI_STATE = true;
 const DEBUG_BBOX = false;
 const DEBUG_PLAYER_STATE = false;
 const DEBUG_PATHFINDING_NODES = false;
@@ -518,6 +519,59 @@ class FestivalGoer extends GameObject {
   }
 }
 
+class FleeingState extends CharacterState {
+  static FLEE_TIME = 5000;
+  startTime = Date.now();
+  updateMove(character: AIFestivalGoer, game: Game, move: Vec2d) {
+    move.add(game.player.getCenter().directionTo(character.getCenter()));
+  }
+
+  update(game: Game) {
+    if (Date.now() > this.startTime + FleeingState.FLEE_TIME) {
+      return new IdleState();
+    }
+  }
+}
+
+class TargetSeekingState extends CharacterState {
+  character: AIFestivalGoer;
+  constructor(character: AIFestivalGoer) {
+    super();
+    this.character = character;
+  }
+
+  updateMove(character: AIFestivalGoer, game: Game, move: Vec2d) {
+    const path = character.path;
+    const target = character.target;
+    if (target) {
+      if (!(path || character.isPathfinding)) {
+        character.findPath(game, target);
+      } else if (path) {
+        const curPoint = path.getNextPoint();
+        if (curPoint && character.getCenter().distanceTo(curPoint) < 1) {
+          path.advance();
+        }
+
+        if (!path.nextPointIsDestination()) {
+          const nextPoint = path.getNextPoint();
+          if (!nextPoint) {
+            throw new Error('expected next point');
+          }
+          move.add(character.getCenter().directionTo(nextPoint));
+        } else {
+          move.add(character.getCenter().directionTo(target.getCenter()));
+        }
+      }
+    }
+  }
+
+  toString() {
+    return `${this.constructor.name} { target: ${
+      this.character.target ? this.character.target.id : '[none]'
+    } }`;
+  }
+}
+
 class AIFestivalGoer extends FestivalGoer {
   static DIALOG = [
     'Where can I charge my drone?',
@@ -543,8 +597,9 @@ class AIFestivalGoer extends FestivalGoer {
     }
   }
 
-  runFromPiss() {
+  runFromPiss(game: Game) {
     this.clearTarget();
+    this.transitionTo(new FleeingState(), game);
   }
 
   tryAcquireTarget(game: Game) {
@@ -702,36 +757,36 @@ class AIFestivalGoer extends FestivalGoer {
       this.tryAcquireTarget(game);
     }
 
+    if (this.target && this.state instanceof IdleState) {
+      this.transitionTo(new TargetSeekingState(this), game);
+    }
+
     this.updateDialog();
 
     let move = new Vec2d();
-    const path = this.path;
-    const target = this.target;
 
-    if (target) {
-      if (!(path || this.isPathfinding)) {
-        this.findPath(game, target);
-      } else if (path) {
-        const curPoint = path.getNextPoint();
-        if (curPoint && this.getCenter().distanceTo(curPoint) < 1) {
-          path.advance();
-        }
-
-        if (!path.nextPointIsDestination()) {
-          const nextPoint = path.getNextPoint();
-          if (!nextPoint) {
-            throw new Error('expected next point');
-          }
-          move.add(this.getCenter().directionTo(nextPoint));
-        } else {
-          move.add(this.getCenter().directionTo(target.getCenter()));
-        }
-      }
+    if (
+      this.state instanceof FleeingState ||
+      this.state instanceof TargetSeekingState
+    ) {
+      this.state.updateMove(this, game, move);
     }
 
     if (move.x !== 0 || move.y !== 0) {
       move = getMovementVelocity(move, FestivalGoer.MOVEMENT_SPEED);
+      const lastPos = this.pos.clone();
+
       this.pos.add(move);
+
+      const updatedCenter = this.getCenter();
+      const walkability = game.getGridTile(
+        game.toGridCoordsUnclamped(updatedCenter)
+      );
+      if (walkability == null || walkability === UNWALKABLE) {
+        // revert pos
+        this.pos = lastPos;
+      }
+
       this.lastMove = move;
       this.isMoving = true;
     } else {
@@ -781,8 +836,8 @@ class TentPissingState extends TimedAttackState {
 }
 
 class PissArea extends GameObject {
-  bboxStart = new Vec2d({x: -4, y: -4});
-  bboxEnd = new Vec2d({x: 4, y: 4});
+  bboxStart = new Vec2d({x: -8, y: -8});
+  bboxEnd = new Vec2d({x: 8, y: 8});
 }
 
 class FreePissingState extends CharacterState {
@@ -1409,7 +1464,7 @@ class Game {
 
     if (object instanceof AIFestivalGoer) {
       if (otherObject instanceof PissArea) {
-        object.runFromPiss();
+        object.runFromPiss(this);
       } else if (otherObject instanceof Tent) {
         if (object.target && object.target === otherObject) {
           object.enterTent(otherObject, this);
@@ -1625,6 +1680,21 @@ const renderFestivalGoerImage = (
       view.toScreenY(person.pos.y)
     );
   }
+  if (DEBUG_AI_STATE) {
+    ctx.font = '10px monospace';
+    ctx.fillStyle = 'black';
+    ctx.strokeStyle = 'white';
+    ctx.strokeText(
+      `${person.state.toString()}`,
+      view.toScreenX(person.pos.x + 20),
+      view.toScreenY(person.pos.y)
+    );
+    ctx.fillText(
+      `${person.state.toString()}`,
+      view.toScreenX(person.pos.x + 20),
+      view.toScreenY(person.pos.y)
+    );
+  }
   if (DEBUG_OBJECTS) {
     ctx.font = '10px monospace';
     ctx.fillStyle = 'black';
@@ -1835,29 +1905,32 @@ const renderTarget = (
   if (!image) return;
   const targetCenter = target.getCenter();
 
-  ctx.drawImage(
-    image,
-    Math.floor(view.toScreenX(targetCenter.x)) - image.width / 2,
-    Math.floor(view.toScreenY(targetCenter.y)) - image.height / 2,
-    image.width,
-    image.height
-  );
-
   const label =
     game.player.target &&
     (game.player.withinAttackRange(game.player.target) &&
       game.player.energy > 0)
       ? `smash`
+      : MOUSE_CONTROL
+      ? null
       : `piss on`;
   ctx.font = '10px monospace';
   ctx.fillStyle = 'black';
+  if (label) {
+    ctx.drawImage(
+      image,
+      Math.floor(view.toScreenX(targetCenter.x)) - image.width / 2,
+      Math.floor(view.toScreenY(targetCenter.y)) - image.height / 2,
+      image.width,
+      image.height
+    );
 
-  ctx.fillText(
-    label,
-    Math.floor(view.toScreenX(targetCenter.x)) -
-      ctx.measureText(label).width / 2,
-    Math.floor(view.toScreenY(target.pos.y))
-  );
+    ctx.fillText(
+      label,
+      Math.floor(view.toScreenX(targetCenter.x)) -
+        ctx.measureText(label).width / 2,
+      Math.floor(view.toScreenY(target.pos.y))
+    );
+  }
 };
 
 function renderFrame(canvas, ctx, game, editorModeState) {
