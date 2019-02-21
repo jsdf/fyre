@@ -36,6 +36,7 @@ const SOUND_VOLUME = 0.5;
 const TENT_ADJACENCY_RADIUS = 100;
 const PERF_FRAMETIME = false;
 const PERF_PATHFINDING = false;
+const MOUSE_CONTROL = true;
 
 function range(size: number) {
   return Array(size)
@@ -128,7 +129,9 @@ declare class Audio {
   onerror: Function;
   src: string;
   play: Function;
+  pause: Function;
   volume: number;
+  loop: boolean;
 }
 
 const getSound = (() => {
@@ -372,7 +375,7 @@ class Powerup extends GameObject {
   respawnTime = 10000;
   state: PowerupState = new AvailablePowerupState();
   update(game: Game) {
-    this.pos.y += Math.sin(game.frame / 10 + this.id % 10);
+    this.pos.y += Math.sin(game.frame / 10 + (this.id % 10));
 
     const nextState = this.state.update(this);
     if (nextState) {
@@ -450,15 +453,36 @@ class Path {
   }
 }
 
+class CharacterState {
+  update(game: Game): ?CharacterState {}
+
+  enter(game: Game) {
+    // noop
+  }
+
+  exit(game: Game) {
+    // noop
+  }
+
+  toString() {
+    return `${this.constructor.name} {}`;
+  }
+}
+
+class IdleState extends CharacterState {}
+
 class FestivalGoer extends GameObject {
   bboxStart = new Vec2d({x: 13, y: 18});
   bboxEnd = new Vec2d({x: 17, y: 23});
+  state: CharacterState = new IdleState();
   lastMove = new Vec2d();
   isMoving = false;
   isPathfinding = false;
   target: ?Tent = null;
   path: ?Path = null;
   stuck = false;
+  activeDialog: ?{text: string, startTime: number} = null;
+
   static MOVEMENT_SPEED = 1;
   stillSprite = assets.personstill;
   walkAnim = [
@@ -468,6 +492,33 @@ class FestivalGoer extends GameObject {
   ];
   static FRAMES_PER_ANIM_FRAME = 3;
 
+  animUpdate(game: Game) {
+    if (this.isMoving) {
+      this.sprite = frameCycle(
+        this.walkAnim,
+        FestivalGoer.FRAMES_PER_ANIM_FRAME,
+        game.frame
+      );
+    } else {
+      this.sprite = this.stillSprite;
+    }
+  }
+
+  updateState(game: Game) {
+    const nextState = this.state.update(game);
+    if (nextState) {
+      this.transitionTo(nextState, game);
+    }
+  }
+
+  transitionTo(nextState: CharacterState, game: Game) {
+    this.state.exit(game);
+    this.state = nextState;
+    this.state.enter(game);
+  }
+}
+
+class AIFestivalGoer extends FestivalGoer {
   static DIALOG = [
     'Where can I charge my drone?',
     "We'll remember this for the rest of our lives",
@@ -478,7 +529,6 @@ class FestivalGoer extends GameObject {
 
   static DIALOG_VISIBLE_TIME = 3000;
   static DIALOG_CHANCE = 10000;
-
   enterTent(tent: Tent, game: Game) {
     if (!tent.isUsable() || tent.captured) {
       // give up on this one, find another
@@ -491,6 +541,10 @@ class FestivalGoer extends GameObject {
       playSound(sounds.occupy);
       game.removeWorldObject(this);
     }
+  }
+
+  runFromPiss() {
+    this.clearTarget();
   }
 
   tryAcquireTarget(game: Game) {
@@ -614,24 +668,22 @@ class FestivalGoer extends GameObject {
     game.easystar.calculate();
   }
 
-  activeDialog: ?{text: string, startTime: number} = null;
-
   updateDialog() {
     if (this.activeDialog) {
       // clear expired dialog
       const {startTime} = this.activeDialog;
-      if (Date.now() > startTime + FestivalGoer.DIALOG_VISIBLE_TIME) {
+      if (Date.now() > startTime + AIFestivalGoer.DIALOG_VISIBLE_TIME) {
         this.activeDialog = null;
       }
     }
 
     if (!this.activeDialog) {
       // maybe say new dialog
-      if (Math.floor(Math.random() * FestivalGoer.DIALOG_CHANCE) === 0) {
+      if (Math.floor(Math.random() * AIFestivalGoer.DIALOG_CHANCE) === 0) {
         this.activeDialog = {
           text:
-            FestivalGoer.DIALOG[
-              Math.floor(Math.random() * FestivalGoer.DIALOG.length)
+            AIFestivalGoer.DIALOG[
+              Math.floor(Math.random() * AIFestivalGoer.DIALOG.length)
             ],
           startTime: Date.now(),
         };
@@ -686,41 +738,13 @@ class FestivalGoer extends GameObject {
       this.isMoving = false;
     }
 
+    this.updateState(game);
+
     this.animUpdate(game);
   }
-
-  animUpdate(game: Game) {
-    if (this.isMoving) {
-      this.sprite = frameCycle(
-        this.walkAnim,
-        FestivalGoer.FRAMES_PER_ANIM_FRAME,
-        game.frame
-      );
-    } else {
-      this.sprite = this.stillSprite;
-    }
-  }
 }
 
-class PlayerState {
-  update(game: Game): ?PlayerState {}
-
-  enter(game: Game) {
-    // noop
-  }
-
-  exit(game: Game) {
-    // noop
-  }
-
-  toString() {
-    return `${this.constructor.name} {}`;
-  }
-}
-
-class IdleState extends PlayerState {}
-
-class TimedAttackState extends PlayerState {
+class TimedAttackState extends CharacterState {
   duration = 1000;
   sound = '';
   startTime = Date.now();
@@ -731,7 +755,7 @@ class TimedAttackState extends PlayerState {
     this.target = target;
   }
 
-  update(): ?PlayerState {
+  update(): ?CharacterState {
     if (Date.now() > this.startTime + this.duration) {
       return new IdleState();
     }
@@ -746,13 +770,74 @@ class TimedAttackState extends PlayerState {
   }
 }
 
-class PissingState extends TimedAttackState {
+class TentPissingState extends TimedAttackState {
   sound = sounds.piss;
 
   exit(game: Game) {
     this.target.pissOn();
 
     game.checkForGroupsAdjacent(this.target);
+  }
+}
+
+class PissArea extends GameObject {
+  bboxStart = new Vec2d({x: -4, y: -4});
+  bboxEnd = new Vec2d({x: 4, y: 4});
+}
+
+class FreePissingState extends CharacterState {
+  static PISS_OFFSET = new Vec2d({x: 0, y: -4});
+  static MAX_PISS_DISTANCE = 50;
+  static PISS_TIME = 500;
+  sound = sounds.whitenoise;
+  pissStart = new Vec2d();
+  pissArea = new PissArea();
+  lastPissStart = Date.now();
+
+  enter(game: Game) {
+    game.addWorldObject(this.pissArea);
+    playSound(this.sound);
+    const sound = getSound(this.sound);
+    if (sound) {
+      sound.loop = true;
+    }
+  }
+
+  exit(game: Game) {
+    game.removeWorldObject(this.pissArea);
+    const sound = getSound(this.sound);
+    if (sound) {
+      sound.pause();
+    }
+  }
+
+  update(game: Game): ?CharacterState {
+    if (!game.keys.attack || game.player.piss <= 0) {
+      return new IdleState();
+    }
+
+    if (Date.now() > this.lastPissStart + FreePissingState.PISS_TIME) {
+      game.player.piss--;
+      this.lastPissStart = Date.now();
+    }
+
+    this.pissStart
+      .copyFrom(game.player.getCenter())
+      .add(FreePissingState.PISS_OFFSET);
+
+    if (
+      this.pissStart.distanceTo(game.cursorPos) <
+      FreePissingState.MAX_PISS_DISTANCE
+    ) {
+      this.pissArea.pos.copyFrom(game.cursorPos);
+    } else {
+      this.pissArea.pos.copyFrom(
+        this.pissStart
+          .directionTo(game.cursorPos)
+          .scale(FreePissingState.MAX_PISS_DISTANCE)
+          .add(this.pissStart)
+      );
+    }
   }
 }
 
@@ -773,7 +858,7 @@ class SmashingState extends TimedAttackState {
 
 class Player extends FestivalGoer {
   static START_POS = new Vec2d({x: 308, y: 791});
-  piss = 3;
+  piss = 10;
   energy = 3;
   score = 0;
   pos = Player.START_POS.clone();
@@ -781,7 +866,6 @@ class Player extends FestivalGoer {
   bboxEnd = new Vec2d({x: 17, y: 23});
   stillSprite = assets.guystill;
   walkAnim = [assets.guywalkcycle1, assets.guywalkcycle2, assets.guywalkcycle3];
-  state: PlayerState = new IdleState();
   static MOVEMENT_SPEED = 2;
   static MAX_PISS = 10;
   static MAX_ENERGY = 10;
@@ -836,7 +920,9 @@ class Player extends FestivalGoer {
           (this.piss > 0
             ? this.withinPissRange(t)
             : // if we're out of energy...
-              this.energy > 0 ? this.withinAttackRange(t) : false)
+            this.energy > 0
+            ? this.withinAttackRange(t)
+            : false)
       )
       .sort((a, b) => a.pos.distanceTo(this.pos) - b.pos.distanceTo(this.pos));
     const target = tentsByDistance.length ? tentsByDistance[0] : null;
@@ -846,22 +932,17 @@ class Player extends FestivalGoer {
       if (this.withinAttackRange(target)) {
         this.doSmash(target, game);
       } else {
-        this.doPiss(target, game);
+        if (MOUSE_CONTROL) {
+          this.doPissFreely(game);
+        } else {
+          this.doPissOnTent(target, game);
+        }
       }
     }
 
-    const nextState = this.state.update(game);
-    if (nextState) {
-      this.transitionTo(nextState, game);
-    }
+    this.updateState(game);
 
     this.animUpdate(game);
-  }
-
-  transitionTo(nextState: PlayerState, game: Game) {
-    this.state.exit(game);
-    this.state = nextState;
-    this.state.enter(game);
   }
 
   doSmash(tent: Tent, game: Game) {
@@ -873,12 +954,16 @@ class Player extends FestivalGoer {
     }
   }
 
-  doPiss(tent: Tent, game: Game) {
+  doPissOnTent(tent: Tent, game: Game) {
     if (this.piss && tent.canPissOn()) {
       this.score += 100;
       this.piss--;
-      this.transitionTo(new PissingState(tent), game);
+      this.transitionTo(new TentPissingState(tent), game);
     }
+  }
+
+  doPissFreely(game: Game) {
+    this.transitionTo(new FreePissingState(), game);
   }
 }
 
@@ -1013,6 +1098,7 @@ class Game {
     right: false,
     attack: false,
   };
+  cursorPos = new Vec2d();
 
   worldObjects: Array<GameObject> = [];
   worldObjectsByID: Map<number, GameObject> = new Map();
@@ -1244,7 +1330,9 @@ class Game {
 
     grid[pathPoint.y][pathPoint.x] =
       setTo == null
-        ? grid[pathPoint.y][pathPoint.x] === WALKABLE ? AI_UNWALKABLE : WALKABLE // toggle
+        ? grid[pathPoint.y][pathPoint.x] === WALKABLE
+          ? AI_UNWALKABLE
+          : WALKABLE // toggle
         : setTo;
     this.easystar.setGrid(grid);
   }
@@ -1255,11 +1343,11 @@ class Game {
       y: 0,
     });
 
-    this.addWorldObject(new FestivalGoer(pos));
+    this.addWorldObject(new AIFestivalGoer(pos));
   }
 
   _startSpawningPeople() {
-    this._spawnPeopleLoop(20);
+    this._spawnPeopleLoop(76);
   }
 
   _spawnPeopleLoop = remaining => {
@@ -1319,16 +1407,16 @@ class Game {
       object.pos.sub(object.lastMove);
     }
 
-    if (
-      object instanceof FestivalGoer &&
-      !(object instanceof Player) &&
-      otherObject instanceof Tent
-    ) {
-      if (object.target && object.target === otherObject) {
-        object.enterTent(otherObject, this);
-      } else {
-        if (DEBUG_PATH_FOLLOWING_STUCK) {
-          object.stuck = true;
+    if (object instanceof AIFestivalGoer) {
+      if (otherObject instanceof PissArea) {
+        object.runFromPiss();
+      } else if (otherObject instanceof Tent) {
+        if (object.target && object.target === otherObject) {
+          object.enterTent(otherObject, this);
+        } else {
+          if (DEBUG_PATH_FOLLOWING_STUCK) {
+            object.stuck = true;
+          }
         }
       }
     }
@@ -1455,7 +1543,9 @@ const renderGridGrid = (
         const color =
           grid[row][col] === WALKABLE
             ? 'green'
-            : grid[row][col] === AI_UNWALKABLE ? 'red' : 'yellow';
+            : grid[row][col] === AI_UNWALKABLE
+            ? 'red'
+            : 'yellow';
         if (DEBUG_PATHFINDING_NODES) {
           renderPoint(ctx, view, pos, color);
         }
@@ -1884,7 +1974,14 @@ function renderFrame(canvas, ctx, game, editorModeState) {
   // render singleton things
   const playerState = game.player.state;
 
-  if (playerState instanceof PissingState) {
+  if (playerState instanceof FreePissingState) {
+    renderPissStream(
+      ctx,
+      game.view,
+      playerState.pissStart,
+      playerState.pissArea.pos
+    );
+  } else if (playerState instanceof TentPissingState) {
     renderPissStream(
       ctx,
       game.view,
@@ -1919,6 +2016,14 @@ const Hud = (props: {game: Game}) => {
       <div>
         <div className="statbarlabel">Score: </div>
         {props.game.player.score}
+      </div>
+      <div>
+        <div className="statbarlabel">Tents: </div>
+        {
+          typeFilter(props.game.worldObjects, Tent).filter(tent =>
+            tent.isUsable()
+          ).length
+        }
       </div>
       <pre>
         {DEBUG_PLAYER_STATE &&
@@ -2166,8 +2271,8 @@ class Editor extends React.Component<
               {state.paint === WALKABLE
                 ? 'WALKABLE'
                 : state.paint === AI_UNWALKABLE
-                  ? 'AI_UNWALKABLE'
-                  : 'UNWALKABLE'}
+                ? 'AI_UNWALKABLE'
+                : 'UNWALKABLE'}
             </button>
             <button onClick={this._handleBrushSizeChange}>
               brushSize: {state.brushSize}
@@ -2323,29 +2428,33 @@ class App extends Component<{}, void> {
     }
   }
 
-  _drawStuff(event: SyntheticMouseEvent<HTMLCanvasElement>) {
-    const pos = new Vec2d({
-      x: Math.floor(this.game.view.fromScreenX(event.pageX / SCALE)),
-      y: Math.floor(this.game.view.fromScreenY(event.pageY / SCALE)),
-    });
+  _drawStuff(pos: Vec2d) {
     if (this.editor) {
       this.editor.drawStuff(pos);
     }
   }
 
   _handleClick = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
-    this._drawStuff(event);
+    this._drawStuff(this.game.cursorPos);
   };
 
   _handleMouseDown = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
     this.mouseIsDown = true;
+    this.game.keys.attack = true;
   };
   _handleMouseUp = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
     this.mouseIsDown = false;
+    this.game.keys.attack = false;
   };
   _handleMouseMove = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
+    this.game.cursorPos.x = Math.floor(
+      this.game.view.fromScreenX(event.pageX / SCALE)
+    );
+    this.game.cursorPos.y = Math.floor(
+      this.game.view.fromScreenY(event.pageY / SCALE)
+    );
     if (this.mouseIsDown) {
-      this._drawStuff(event);
+      this._drawStuff(this.game.cursorPos);
     }
   };
 
