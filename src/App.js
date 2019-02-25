@@ -24,13 +24,15 @@ const SCALE = 2;
 const DEBUG_OBJECTS = false;
 const DEBUG_AI_TARGETS = false;
 const DEBUG_AI_STATE = true;
-const DEBUG_BBOX = false;
-const DEBUG_PLAYER_STATE = false;
+const DEBUG_BBOX = true;
+const DEBUG_PLAYER_STATE = true;
 const DEBUG_PATHFINDING_NODES = false;
 const DEBUG_PATHFINDING_BBOXES = false;
 const DEBUG_PATH_FOLLOWING = false;
 const DEBUG_PATH_FOLLOWING_STUCK = true;
 const DEBUG_AJACENCY = false;
+const DEBUG_DISABLE_PEOPLE = true;
+const DEBUG_TENT_GROUPS = false;
 const DARK = false;
 const DRAW_HUD = true;
 const SOUND_VOLUME = 0.5;
@@ -38,6 +40,7 @@ const TENT_ADJACENCY_RADIUS = 100;
 const PERF_FRAMETIME = false;
 const PERF_PATHFINDING = false;
 const MOUSE_CONTROL = true;
+const MAX_CAPTURABLE_TENT_GROUP = 3;
 
 function range(size: number) {
   return Array(size)
@@ -897,6 +900,7 @@ class FreePissingState extends CharacterState {
 }
 
 class SmashingState extends TimedAttackState {
+  duration = 300;
   sound = sounds.smash;
   animation = new Smoke(this.target.pos.clone().add({x: 4, y: 0}));
 
@@ -957,8 +961,11 @@ class Player extends FestivalGoer {
         game.toGridCoordsUnclamped(updatedCenter)
       );
       if (walkability == null || walkability === UNWALKABLE) {
-        // revert pos
-        this.pos = lastPos;
+        // can go anywhere in editor
+        if (!game.inEditorMode) {
+          // revert pos
+          this.pos = lastPos;
+        }
       }
       this.lastMove = playerMove;
       this.isMoving = true;
@@ -971,6 +978,7 @@ class Player extends FestivalGoer {
       .filter(
         t =>
           t.isUsable() &&
+          !game.isTentCaptured(t) &&
           // if we're out of piss, only find attackable targets.
           (this.piss > 0
             ? this.withinPissRange(t)
@@ -984,7 +992,7 @@ class Player extends FestivalGoer {
     this.target = target;
 
     if (game.keys.attack && target && this.state instanceof IdleState) {
-      if (this.withinAttackRange(target)) {
+      if (this.withinAttackRange(target) && this.energy > 0) {
         this.doSmash(target, game);
       } else {
         if (MOUSE_CONTROL) {
@@ -1154,6 +1162,7 @@ class Game {
     attack: false,
   };
   cursorPos = new Vec2d();
+  inEditorMode = false;
 
   worldObjects: Array<GameObject> = [];
   worldObjectsByID: Map<number, GameObject> = new Map();
@@ -1163,7 +1172,7 @@ class Game {
   easystar = new EasyStar.js();
   tileGrid: ?Array<Array<number>> = null;
   tentAdjacencies: Map<number, Array<number>> = new Map();
-  tentColors: Map<number, ?string> = new Map();
+  tentGroups: Map<number, ?string> = new Map();
 
   constructor() {
     this._initGrid();
@@ -1172,7 +1181,9 @@ class Game {
     this.addWorldObject(this.player);
     this.initTentAdjacencies();
 
-    this._startSpawningPeople();
+    if (!DEBUG_DISABLE_PEOPLE) {
+      this._startSpawningPeople();
+    }
   }
 
   addWorldObject(obj: GameObject) {
@@ -1343,6 +1354,10 @@ class Game {
     this.tentAdjacencies = tentAdjacencies;
   }
 
+  isTentCaptured(tent: Tent) {
+    return this.tentGroups.get(tent.id) === 'blue';
+  }
+
   toggleGridTile(pathPoint: {x: number, y: number}) {
     this._setGridTile(pathPoint);
   }
@@ -1482,7 +1497,7 @@ class Game {
   }
 
   checkForGroupsAdjacent(start: Tent) {
-    this.tentColors.clear();
+    this.tentGroups.clear();
 
     typeFilter(this.worldObjects, Tent).forEach(tent =>
       this._checkAndColorGraph(tent)
@@ -1494,14 +1509,14 @@ class Game {
 
     visited.forEach(tent => {
       if (tent.isRuinedByPlayer()) {
-        this.tentColors.set(tent.id, 'green');
+        this.tentGroups.set(tent.id, 'green');
       } else {
-        if (visited.size > 10) {
+        if (visited.size > MAX_CAPTURABLE_TENT_GROUP) {
         } else {
           if (containsOccupant) {
-            this.tentColors.set(tent.id, 'red');
+            this.tentGroups.set(tent.id, 'red');
           } else {
-            this.tentColors.set(tent.id, 'blue');
+            this.tentGroups.set(tent.id, 'blue');
           }
         }
       }
@@ -1630,37 +1645,39 @@ const renderFestivalGoerImage = (
   const image = getImage(person.sprite);
   if (!image) return;
 
-  if (facingRight) {
-    // hack to fix misaligned reversed sprite
-    const rightFacingOffset = -1;
-    ctx.save();
-    ctx.translate(
-      Math.floor(
-        view.toScreenX(person.pos.x + image.width + rightFacingOffset)
-      ),
-      Math.floor(view.toScreenY(person.pos.y))
-    );
-    ctx.scale(-1, 1);
-    ctx.drawImage(image, 0, 0);
-    ctx.restore();
-  } else {
-    ctx.drawImage(
-      image,
-      Math.floor(view.toScreenX(person.pos.x)),
-      Math.floor(view.toScreenY(person.pos.y)),
-      image.width,
-      image.height
-    );
-  }
+  if (person.enabled) {
+    if (facingRight) {
+      // hack to fix misaligned reversed sprite
+      const rightFacingOffset = -1;
+      ctx.save();
+      ctx.translate(
+        Math.floor(
+          view.toScreenX(person.pos.x + image.width + rightFacingOffset)
+        ),
+        Math.floor(view.toScreenY(person.pos.y))
+      );
+      ctx.scale(-1, 1);
+      ctx.drawImage(image, 0, 0);
+      ctx.restore();
+    } else {
+      ctx.drawImage(
+        image,
+        Math.floor(view.toScreenX(person.pos.x)),
+        Math.floor(view.toScreenY(person.pos.y)),
+        image.width,
+        image.height
+      );
+    }
 
-  if (person.activeDialog) {
-    ctx.font = '10px monospace';
-    ctx.fillStyle = 'black';
-    ctx.fillText(
-      person.activeDialog.text,
-      view.toScreenX(person.pos.x),
-      view.toScreenY(person.pos.y)
-    );
+    if (person.activeDialog) {
+      ctx.font = '10px monospace';
+      ctx.fillStyle = 'black';
+      ctx.fillText(
+        person.activeDialog.text,
+        view.toScreenX(person.pos.x),
+        view.toScreenY(person.pos.y)
+      );
+    }
   }
 
   const {target} = person;
@@ -1684,6 +1701,9 @@ const renderFestivalGoerImage = (
     ctx.font = '10px monospace';
     ctx.fillStyle = 'black';
     ctx.strokeStyle = 'white';
+    const prevLineWidth = ctx.lineWidth;
+    ctx.lineWidth = 3;
+
     ctx.strokeText(
       `${person.state.toString()}`,
       view.toScreenX(person.pos.x + 20),
@@ -1694,6 +1714,7 @@ const renderFestivalGoerImage = (
       view.toScreenX(person.pos.x + 20),
       view.toScreenY(person.pos.y)
     );
+    ctx.lineWidth = prevLineWidth;
   }
   if (DEBUG_OBJECTS) {
     ctx.font = '10px monospace';
@@ -1813,14 +1834,17 @@ const renderObjectImage = (
   obj: GameObject
 ) => {
   const image = getImage(obj.sprite);
-  if (image) {
-    ctx.drawImage(
-      image,
-      Math.floor(view.toScreenX(obj.pos.x)),
-      Math.floor(view.toScreenY(obj.pos.y)),
-      Math.floor(image.width),
-      Math.floor(image.height)
-    );
+
+  if (obj.enabled) {
+    if (image) {
+      ctx.drawImage(
+        image,
+        Math.floor(view.toScreenX(obj.pos.x)),
+        Math.floor(view.toScreenY(obj.pos.y)),
+        Math.floor(image.width),
+        Math.floor(image.height)
+      );
+    }
   }
 
   if (DEBUG_OBJECTS) {
@@ -1878,20 +1902,34 @@ const renderLabel = (
   );
 };
 
-const renderTent = (ctx: CanvasRenderingContext2D, view: View, tent: Tent) => {
+const renderTent = (
+  ctx: CanvasRenderingContext2D,
+  view: View,
+  tent: Tent,
+  tentGroup: ?string
+) => {
   renderObjectImage(ctx, view, tent);
 
-  if (tent.occupied) {
-    // renderLabel(ctx, view, tent, 'occupied', 'red', -5);
-    renderImage(
-      ctx,
-      view,
-      tent.pos.clone().add({x: -8, y: 0}),
-      assets.occupied
-    );
-  } else if (tent.pissiness >= Tent.MAX_PISSINESS) {
-    // renderLabel(ctx, view, tent, 'pissy', 'blue', -5);
-    renderImage(ctx, view, tent.pos.clone().add({x: -8, y: 0}), assets.pissed);
+  if (tent.enabled) {
+    if (tent.occupied) {
+      // renderLabel(ctx, view, tent, 'occupied', 'red', -5);
+      renderImage(
+        ctx,
+        view,
+        tent.pos.clone().add({x: -8, y: 0}),
+        assets.occupied
+      );
+    } else if (tent.pissiness >= Tent.MAX_PISSINESS) {
+      // renderLabel(ctx, view, tent, 'pissy', 'blue', -5);
+      renderImage(
+        ctx,
+        view,
+        tent.pos.clone().add({x: -8, y: 0}),
+        assets.pissed
+      );
+    } else if (tentGroup === 'blue') {
+      renderLabel(ctx, view, tent, 'owned', 'blue', -5);
+    }
   }
 };
 
@@ -1945,9 +1983,6 @@ function renderFrame(canvas, ctx, game, editorModeState) {
     return a.getMax().y - b.getMax().y;
   });
   zSortedObjects.forEach((obj, i) => {
-    if (!obj.enabled) {
-      return;
-    }
     if (!game.view.inView(obj)) {
       return;
     }
@@ -1958,7 +1993,7 @@ function renderFrame(canvas, ctx, game, editorModeState) {
     } else if (obj instanceof Powerup) {
       return;
     } else if (obj instanceof Tent) {
-      renderTent(ctx, game.view, obj);
+      renderTent(ctx, game.view, obj, game.tentGroups.get(obj.id));
     } else {
       renderObjectImage(ctx, game.view, obj);
     }
@@ -1976,9 +2011,6 @@ function renderFrame(canvas, ctx, game, editorModeState) {
   // render stuff above tint
   renderGridGrid(ctx, game.view, game, editorModeState);
   zSortedObjects.forEach((obj, i) => {
-    if (!obj.enabled) {
-      return;
-    }
     if (obj instanceof Powerup) {
       if (!game.view.inView(obj)) {
         return;
@@ -2010,9 +2042,11 @@ function renderFrame(canvas, ctx, game, editorModeState) {
         }
       }
     } else if (obj instanceof Tent) {
-      const color = game.tentColors.get(obj.id);
-      if (color != null) {
-        renderPoint(ctx, game.view, obj.getCenter(), color);
+      if (DEBUG_TENT_GROUPS) {
+        const color = game.tentGroups.get(obj.id);
+        if (color != null) {
+          renderPoint(ctx, game.view, obj.getCenter(), color);
+        }
       }
 
       if (DEBUG_AJACENCY) {
@@ -2482,6 +2516,8 @@ class App extends Component<{}, void> {
     });
   }
   _update() {
+    this.game.inEditorMode =
+      this.editor && this.editor.getModeState().mode !== 'play';
     this.game.update();
   }
 
@@ -2513,11 +2549,15 @@ class App extends Component<{}, void> {
 
   _handleMouseDown = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
     this.mouseIsDown = true;
-    this.game.keys.attack = true;
+    if (MOUSE_CONTROL) {
+      this.game.keys.attack = true;
+    }
   };
   _handleMouseUp = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
     this.mouseIsDown = false;
-    this.game.keys.attack = false;
+    if (MOUSE_CONTROL) {
+      this.game.keys.attack = false;
+    }
   };
   _handleMouseMove = (event: SyntheticMouseEvent<HTMLCanvasElement>) => {
     this.game.cursorPos.x = Math.floor(
