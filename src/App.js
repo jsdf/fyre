@@ -32,7 +32,7 @@ const DEBUG_PATHFINDING_BBOXES = false;
 const DEBUG_PATH_FOLLOWING = false;
 const DEBUG_PATH_FOLLOWING_STUCK = true;
 const DEBUG_AJACENCY = false;
-const DEBUG_DISABLE_PEOPLE = true;
+const DEBUG_DISABLE_PEOPLE = false;
 const DEBUG_TENT_GROUPS = false;
 const DARK = false;
 const DRAW_HUD = true;
@@ -638,7 +638,7 @@ class AIFestivalGoer extends FestivalGoer {
     target: {x: number, y: number},
     searchRadius: number
   ) {
-    const {tileGrid} = game;
+    const {tileGrid} = game.grid;
     if (tileGrid == null) {
       console.error('tileGrid not initialized');
       return;
@@ -648,12 +648,12 @@ class AIFestivalGoer extends FestivalGoer {
     for (let rowRel = -1 * searchRadius; rowRel < searchRadius; rowRel++) {
       for (let colRel = -1 * searchRadius; colRel < searchRadius; colRel++) {
         const gridPos = {x: target.x + colRel, y: target.y + rowRel};
-        const worldPos = game.tileCenterFromGridCoords(gridPos);
-        const gridPosClamped = game.toGridCoords(worldPos);
+        const worldPos = game.grid.tileCenterFromGridCoords(gridPos);
+        const gridPosClamped = game.grid.toGridCoords(worldPos);
         candidates.push({
           gridPos,
           distance: this.getCenter().distanceTo(
-            game.tileCenterFromGridCoords(gridPos)
+            game.grid.tileCenterFromGridCoords(gridPos)
           ),
           walkable: tileGrid[gridPosClamped.y][gridPosClamped.x] === WALKABLE,
         });
@@ -672,16 +672,16 @@ class AIFestivalGoer extends FestivalGoer {
 
   findPath(game: Game, target: Tent) {
     this.isPathfinding = true;
-    let start = game.toGridCoords(this.getCenter());
-    let end = game.toGridCoords(target.getCenter());
+    let start = game.grid.toGridCoords(this.getCenter());
+    let end = game.grid.toGridCoords(target.getCenter());
 
-    const {tileGrid} = game;
+    const {tileGrid} = game.grid;
     if (tileGrid == null) {
       console.error('tileGrid not initialized');
       return;
     }
 
-    const searchRadius = Game.GRID_TENT_SIZE; // more than the width of a tent
+    const searchRadius = Grid.GRID_TENT_SIZE; // more than the width of a tent
 
     if (tileGrid[start.y][start.x] !== WALKABLE) {
       const improvedStart = this.findNearestWalkableTile(
@@ -710,7 +710,7 @@ class AIFestivalGoer extends FestivalGoer {
     }
     let startTime = performance.now();
     try {
-      game.easystar.findPath(start.x, start.y, end.x, end.y, gridPath => {
+      game.grid.easystar.findPath(start.x, start.y, end.x, end.y, gridPath => {
         if (gridPath === null) {
           console.error('pathfinding failed', this, {start, end});
         } else {
@@ -721,7 +721,7 @@ class AIFestivalGoer extends FestivalGoer {
               gridPath.length === 0
                 ? [target.pos]
                 : gridPath.map(gridPoint =>
-                    game.tileCenterFromGridCoords(gridPoint)
+                    game.grid.tileCenterFromGridCoords(gridPoint)
                   )
             );
             this.isPathfinding = false;
@@ -741,7 +741,7 @@ class AIFestivalGoer extends FestivalGoer {
       console.error('pathfinding error', err, this, {start, end});
     }
 
-    game.easystar.calculate();
+    game.grid.easystar.calculate();
   }
 
   updateDialog() {
@@ -800,8 +800,8 @@ class AIFestivalGoer extends FestivalGoer {
       this.pos.add(move);
 
       const updatedCenter = this.getCenter();
-      const walkability = game.getGridTile(
-        game.toGridCoordsUnclamped(updatedCenter)
+      const walkability = game.grid.getGridTile(
+        game.grid.toGridCoordsUnclamped(updatedCenter)
       );
       if (walkability == null || walkability === UNWALKABLE) {
         // revert pos
@@ -975,8 +975,8 @@ class Player extends FestivalGoer {
       const lastPos = this.pos.clone();
       this.pos.add(playerMove);
       const updatedCenter = this.getCenter();
-      const walkability = game.getGridTile(
-        game.toGridCoordsUnclamped(updatedCenter)
+      const walkability = game.grid.getGridTile(
+        game.grid.toGridCoordsUnclamped(updatedCenter)
       );
       if (walkability == null || walkability === UNWALKABLE) {
         // can go anywhere in editor
@@ -1169,105 +1169,17 @@ function clamp(x, min, max) {
   return Math.max(Math.min(x, max), min);
 }
 
-class Game {
-  frame = 0;
-  player = new Player();
-  keys: KeyStates = {
-    up: false,
-    down: false,
-    left: false,
-    right: false,
-    attack: false,
-  };
-  cursorPos = new Vec2d();
-  inEditorMode = false;
-
-  worldObjects: Array<GameObject> = [];
-  worldObjectsByID: Map<number, GameObject> = new Map();
-
-  view = new View();
-
+class Grid {
   easystar = new EasyStar.js();
-  tileGrid: ?Array<Array<number>> = null;
-  tentAdjacencies: Map<number, Array<number>> = new Map();
-  tentGroups: Map<number, ?string> = new Map();
+  tileGrid: ?Array<Array<number>> = gridData;
 
   constructor() {
-    this._initGrid();
-    this._spawnObjects();
+    this.easystar.setGrid(gridData);
+    this.easystar.setAcceptableTiles([WALKABLE]);
+    this.easystar.enableDiagonals();
+    this.easystar.disableCornerCutting();
 
-    this.addWorldObject(this.player);
-    this.initTentAdjacencies();
-
-    if (!DEBUG_DISABLE_PEOPLE) {
-      this._startSpawningPeople();
-    }
-  }
-
-  addWorldObject(obj: GameObject) {
-    this.worldObjects.push(obj);
-    this.worldObjectsByID.set(obj.id, obj);
-  }
-
-  removeWorldObject(obj: GameObject) {
-    const index = this.worldObjects.indexOf(obj);
-    if (index > -1) {
-      this.worldObjects.splice(index, 1);
-      this.worldObjectsByID.delete(obj.id);
-    } else {
-      throw new Error(`couldn't find obj id=${obj.id} in worldObjects`);
-    }
-  }
-
-  spawnObjectOfType(obj: GameObjectInit): GameObject {
-    switch (obj.type) {
-      case 'Tent':
-        return this._spawnGeneric(obj.pos, Tent);
-      case 'Bus':
-        return this._spawnGeneric(obj.pos, Bus);
-      case 'CheeseSandwich':
-        return this._spawnGeneric(obj.pos, CheeseSandwich);
-      case 'Water':
-        return this._spawnGeneric(obj.pos, Water);
-      default:
-        throw new Error(`unknown object type ${obj.type}`);
-    }
-  }
-
-  _spawnObjects() {
-    objects.forEach(obj => {
-      this.spawnObjectOfType(obj);
-    });
-
-    typeFilter(this.worldObjects, Tent).forEach(obj => {
-      this._makeObjectBBoxUnwalkable(obj);
-    });
-  }
-
-  _spawnGeneric(pos: Vec2dInit, ObjectClass: Class<GameObject>) {
-    const obj = new ObjectClass(pos);
-    this.addWorldObject(obj);
-    return obj;
-  }
-
-  dumpObjects() {
-    return JSON.stringify(
-      this.worldObjects
-        .map(obj => {
-          switch (obj.constructor.name) {
-            case 'Tent':
-            case 'Bus':
-            case 'CheeseSandwich':
-            case 'Water':
-              return obj.toJSON();
-            default:
-              return null;
-          }
-        })
-        .filter(Boolean),
-      null,
-      2
-    );
+    this.easystar.enableSync();
   }
 
   static GRID_TENT_SIZE = 4;
@@ -1280,12 +1192,12 @@ class Game {
 
   toGridCoords(pos: Vec2d) {
     const x = clamp(
-      Math.floor((pos.x - Game.GRID_OFFSET.x) / GRID_UNIT_WIDTH),
+      Math.floor((pos.x - Grid.GRID_OFFSET.x) / GRID_UNIT_WIDTH),
       0,
       GRID_COLS - 1
     );
     const y = clamp(
-      Math.floor((pos.y - Game.GRID_OFFSET.y) / GRID_UNIT_HEIGHT),
+      Math.floor((pos.y - Grid.GRID_OFFSET.y) / GRID_UNIT_HEIGHT),
       0,
       GRID_ROWS - 1
     );
@@ -1295,8 +1207,8 @@ class Game {
     return {x, y};
   }
   toGridCoordsUnclamped(pos: Vec2d) {
-    const x = Math.floor((pos.x - Game.GRID_OFFSET.x) / GRID_UNIT_WIDTH);
-    const y = Math.floor((pos.y - Game.GRID_OFFSET.y) / GRID_UNIT_HEIGHT);
+    const x = Math.floor((pos.x - Grid.GRID_OFFSET.x) / GRID_UNIT_WIDTH);
+    const y = Math.floor((pos.y - Grid.GRID_OFFSET.y) / GRID_UNIT_HEIGHT);
     if (Number.isNaN(x) || Number.isNaN(y)) {
       throw new Error(`invalid coordinates ${x},${y}`);
     }
@@ -1304,18 +1216,18 @@ class Game {
   }
   tileCenterFromGridCoords(point: {x: number, y: number}) {
     const pos = new Vec2d();
-    pos.x = Game.GRID_OFFSET.x + (point.x + 0.5) * GRID_UNIT_WIDTH;
-    pos.y = Game.GRID_OFFSET.y + (point.y + 0.5) * GRID_UNIT_HEIGHT;
+    pos.x = Grid.GRID_OFFSET.x + (point.x + 0.5) * GRID_UNIT_WIDTH;
+    pos.y = Grid.GRID_OFFSET.y + (point.y + 0.5) * GRID_UNIT_HEIGHT;
     return pos;
   }
   tileFloorFromGridCoords(point: {x: number, y: number}) {
     const pos = new Vec2d();
-    pos.x = Game.GRID_OFFSET.x + point.x * GRID_UNIT_WIDTH;
-    pos.y = Game.GRID_OFFSET.y + point.y * GRID_UNIT_HEIGHT;
+    pos.x = Grid.GRID_OFFSET.x + point.x * GRID_UNIT_WIDTH;
+    pos.y = Grid.GRID_OFFSET.y + point.y * GRID_UNIT_HEIGHT;
     return pos;
   }
 
-  _makeObjectBBoxUnwalkable(obj: GameObject) {
+  makeObjectBBoxUnwalkable(obj: GameObject) {
     const objBBoxStart = obj.pos.clone().add(obj.bboxStart);
     const objBBoxEnd = obj.pos.clone().add(obj.bboxEnd);
     const objGridStartPos = this.toGridCoords(objBBoxStart);
@@ -1335,41 +1247,6 @@ class Game {
         this.setGridTile({x: pathCol, y: pathRow}, AI_UNWALKABLE);
       }
     }
-  }
-
-  _initGrid() {
-    this.tileGrid = gridData;
-    this.easystar.setGrid(gridData);
-    this.easystar.setAcceptableTiles([WALKABLE]);
-    this.easystar.enableDiagonals();
-    this.easystar.disableCornerCutting();
-
-    this.easystar.enableSync();
-  }
-
-  initTentAdjacencies() {
-    const tents = typeFilter(this.worldObjects, Tent);
-    const tentAdjacencies = new Map();
-    for (let i = 0; i < tents.length; i++) {
-      const center = tents[i].getCenter();
-      const adjacencyList = [];
-      tentAdjacencies.set(tents[i].id, adjacencyList);
-
-      for (let k = 0; k < tents.length; k++) {
-        if (
-          i !== k && // ignore self
-          tents[k].getCenter().distanceTo(center) <= TENT_ADJACENCY_RADIUS
-        ) {
-          adjacencyList.push(tents[k].id);
-        }
-      }
-    }
-
-    this.tentAdjacencies = tentAdjacencies;
-  }
-
-  isTentCaptured(tent: Tent) {
-    return this.tentGroups.get(tent.id) === 'blue';
   }
 
   toggleGridTile(pathPoint: {x: number, y: number}) {
@@ -1419,6 +1296,132 @@ class Game {
           : WALKABLE // toggle
         : setTo;
     this.easystar.setGrid(grid);
+  }
+}
+
+class Game {
+  frame = 0;
+  player = new Player();
+  keys: KeyStates = {
+    up: false,
+    down: false,
+    left: false,
+    right: false,
+    attack: false,
+  };
+  cursorPos = new Vec2d();
+  inEditorMode = false;
+
+  grid = new Grid();
+
+  worldObjects: Array<GameObject> = [];
+  worldObjectsByID: Map<number, GameObject> = new Map();
+
+  view = new View();
+
+  tentAdjacencies: Map<number, Array<number>> = new Map();
+  tentGroups: Map<number, ?string> = new Map();
+
+  constructor() {
+    this._spawnObjects();
+
+    this.addWorldObject(this.player);
+    this.initTentAdjacencies();
+
+    if (!DEBUG_DISABLE_PEOPLE) {
+      this._startSpawningPeople();
+    }
+  }
+
+  addWorldObject(obj: GameObject) {
+    this.worldObjects.push(obj);
+    this.worldObjectsByID.set(obj.id, obj);
+  }
+
+  removeWorldObject(obj: GameObject) {
+    const index = this.worldObjects.indexOf(obj);
+    if (index > -1) {
+      this.worldObjects.splice(index, 1);
+      this.worldObjectsByID.delete(obj.id);
+    } else {
+      throw new Error(`couldn't find obj id=${obj.id} in worldObjects`);
+    }
+  }
+
+  spawnObjectOfType(obj: GameObjectInit): GameObject {
+    switch (obj.type) {
+      case 'Tent':
+        return this._spawnGeneric(obj.pos, Tent);
+      case 'Bus':
+        return this._spawnGeneric(obj.pos, Bus);
+      case 'CheeseSandwich':
+        return this._spawnGeneric(obj.pos, CheeseSandwich);
+      case 'Water':
+        return this._spawnGeneric(obj.pos, Water);
+      default:
+        throw new Error(`unknown object type ${obj.type}`);
+    }
+  }
+
+  _spawnObjects() {
+    objects.forEach(obj => {
+      this.spawnObjectOfType(obj);
+    });
+
+    typeFilter(this.worldObjects, Tent).forEach(obj => {
+      this.grid.makeObjectBBoxUnwalkable(obj);
+    });
+  }
+
+  _spawnGeneric(pos: Vec2dInit, ObjectClass: Class<GameObject>) {
+    const obj = new ObjectClass(pos);
+    this.addWorldObject(obj);
+    return obj;
+  }
+
+  dumpObjects() {
+    return JSON.stringify(
+      this.worldObjects
+        .map(obj => {
+          switch (obj.constructor.name) {
+            case 'Tent':
+            case 'Bus':
+            case 'CheeseSandwich':
+            case 'Water':
+              return obj.toJSON();
+            default:
+              return null;
+          }
+        })
+        .filter(Boolean),
+      null,
+      2
+    );
+  }
+
+  initTentAdjacencies() {
+    const tents = typeFilter(this.worldObjects, Tent);
+    const tentAdjacencies = new Map();
+    for (let i = 0; i < tents.length; i++) {
+      const center = tents[i].getCenter();
+      const adjacencyList = [];
+      tentAdjacencies.set(tents[i].id, adjacencyList);
+
+      for (let k = 0; k < tents.length; k++) {
+        if (
+          i !== k && // ignore self
+          tents[k].getCenter().distanceTo(center) <= TENT_ADJACENCY_RADIUS
+        ) {
+          adjacencyList.push(tents[k].id);
+        }
+      }
+    }
+
+    this.tentAdjacencies = tentAdjacencies;
+  }
+
+  isTentCaptured(tent: Tent) {
+    return this.tentGroups.get(tent.id) === 'blue';
   }
 
   _spawnPerson() {
@@ -1606,7 +1609,7 @@ const renderPoint = (
   ctx.fillRect(x, y, width, height);
 };
 
-const renderGridGrid = (
+const renderEditorGrid = (
   ctx: CanvasRenderingContext2D,
   view: View,
   game: Game,
@@ -1616,14 +1619,14 @@ const renderGridGrid = (
     DEBUG_PATHFINDING_BBOXES ||
     (editorModeState && editorModeState.mode === 'grid');
   if (DEBUG_PATHFINDING_NODES || showGrid) {
-    if (!game.tileGrid) return;
-    const grid = game.tileGrid;
+    if (!game.grid.tileGrid) return;
+    const grid = game.grid.tileGrid;
 
     const width = GRID_UNIT_WIDTH;
     const height = GRID_UNIT_HEIGHT;
     for (let row = 0; row < grid.length; row++) {
       for (let col = 0; col < grid[row].length; col++) {
-        const pos = game.tileCenterFromGridCoords({x: col, y: row});
+        const pos = game.grid.tileCenterFromGridCoords({x: col, y: row});
         const {x, y} = pos;
 
         const color =
@@ -2025,7 +2028,7 @@ function renderFrame(canvas, ctx, game, editorModeState) {
   }
 
   // render stuff above tint
-  renderGridGrid(ctx, game.view, game, editorModeState);
+  renderEditorGrid(ctx, game.view, game, editorModeState);
   zSortedObjects.forEach((obj, i) => {
     if (obj instanceof Powerup) {
       if (!game.view.inView(obj)) {
@@ -2155,9 +2158,9 @@ const Hud = (props: {game: Game}) => {
               player: {
                 state: props.game.player.state.toString(),
                 pos: props.game.player.pos,
-                gridPos: props.game.toGridCoords(props.game.player.pos),
-                walkability: props.game.getGridTile(
-                  props.game.toGridCoords(props.game.player.getCenter())
+                gridPos: props.game.grid.toGridCoords(props.game.player.pos),
+                walkability: props.game.grid.getGridTile(
+                  props.game.grid.toGridCoords(props.game.player.getCenter())
                 ),
               },
               target: target && {
@@ -2290,9 +2293,9 @@ class Editor extends React.Component<
     const state = this.getModeState();
     switch (state.mode) {
       case 'grid': {
-        const pathPoint = game.toGridCoords(pos);
+        const pathPoint = game.grid.toGridCoords(pos);
         if (state.brushSize === 1) {
-          game.setGridTile(pathPoint, state.paint);
+          game.grid.setGridTile(pathPoint, state.paint);
         } else {
           const halfBrushSize = Math.floor(state.brushSize / 2);
 
@@ -2306,7 +2309,7 @@ class Editor extends React.Component<
               y <= pathPoint.y + halfBrushSize;
               y++
             ) {
-              game.setGridTile({x, y}, state.paint);
+              game.grid.setGridTile({x, y}, state.paint);
             }
           }
         }
