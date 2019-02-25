@@ -15,11 +15,11 @@ const objects: Array<GameObjectInit> = objectsData;
 
 const PROD_OPTIMIZE = false;
 const MAX_OBJECT_SIZE = 96;
-const PATH_GRID_SUBDIV = 5;
-const PATH_GRID_ROWS = 17 * PATH_GRID_SUBDIV;
-const PATH_GRID_COLS = 18 * PATH_GRID_SUBDIV;
-const PATH_GRID_UNIT_WIDTH = 64 / PATH_GRID_SUBDIV;
-const PATH_GRID_UNIT_HEIGHT = 64 / PATH_GRID_SUBDIV;
+const GRID_SUBDIV = 5;
+const GRID_ROWS = 17 * GRID_SUBDIV;
+const GRID_COLS = 18 * GRID_SUBDIV;
+const GRID_UNIT_WIDTH = 64 / GRID_SUBDIV;
+const GRID_UNIT_HEIGHT = 64 / GRID_SUBDIV;
 const SCALE = 2;
 const DEBUG_OBJECTS = false;
 const DEBUG_AI_TARGETS = false;
@@ -681,7 +681,7 @@ class AIFestivalGoer extends FestivalGoer {
       return;
     }
 
-    const searchRadius = Game.PATH_GRID_TENT_SIZE; // more than the width of a tent
+    const searchRadius = Game.GRID_TENT_SIZE; // more than the width of a tent
 
     if (tileGrid[start.y][start.x] !== WALKABLE) {
       const improvedStart = this.findNearestWalkableTile(
@@ -1270,8 +1270,8 @@ class Game {
     );
   }
 
-  static PATH_GRID_TENT_SIZE = 4;
-  static PATH_GRID_OFFSET = GRID_START.clone().add(
+  static GRID_TENT_SIZE = 4;
+  static GRID_OFFSET = GRID_START.clone().add(
     new Vec2d({
       x: 0,
       y: 0,
@@ -1280,14 +1280,14 @@ class Game {
 
   toGridCoords(pos: Vec2d) {
     const x = clamp(
-      Math.floor((pos.x - Game.PATH_GRID_OFFSET.x) / PATH_GRID_UNIT_WIDTH),
+      Math.floor((pos.x - Game.GRID_OFFSET.x) / GRID_UNIT_WIDTH),
       0,
-      PATH_GRID_COLS - 1
+      GRID_COLS - 1
     );
     const y = clamp(
-      Math.floor((pos.y - Game.PATH_GRID_OFFSET.y) / PATH_GRID_UNIT_HEIGHT),
+      Math.floor((pos.y - Game.GRID_OFFSET.y) / GRID_UNIT_HEIGHT),
       0,
-      PATH_GRID_ROWS - 1
+      GRID_ROWS - 1
     );
     if (Number.isNaN(x) || Number.isNaN(y)) {
       throw new Error(`invalid coordinates ${x},${y}`);
@@ -1295,12 +1295,8 @@ class Game {
     return {x, y};
   }
   toGridCoordsUnclamped(pos: Vec2d) {
-    const x = Math.floor(
-      (pos.x - Game.PATH_GRID_OFFSET.x) / PATH_GRID_UNIT_WIDTH
-    );
-    const y = Math.floor(
-      (pos.y - Game.PATH_GRID_OFFSET.y) / PATH_GRID_UNIT_HEIGHT
-    );
+    const x = Math.floor((pos.x - Game.GRID_OFFSET.x) / GRID_UNIT_WIDTH);
+    const y = Math.floor((pos.y - Game.GRID_OFFSET.y) / GRID_UNIT_HEIGHT);
     if (Number.isNaN(x) || Number.isNaN(y)) {
       throw new Error(`invalid coordinates ${x},${y}`);
     }
@@ -1308,14 +1304,14 @@ class Game {
   }
   tileCenterFromGridCoords(point: {x: number, y: number}) {
     const pos = new Vec2d();
-    pos.x = Game.PATH_GRID_OFFSET.x + (point.x + 0.5) * PATH_GRID_UNIT_WIDTH;
-    pos.y = Game.PATH_GRID_OFFSET.y + (point.y + 0.5) * PATH_GRID_UNIT_HEIGHT;
+    pos.x = Game.GRID_OFFSET.x + (point.x + 0.5) * GRID_UNIT_WIDTH;
+    pos.y = Game.GRID_OFFSET.y + (point.y + 0.5) * GRID_UNIT_HEIGHT;
     return pos;
   }
   tileFloorFromGridCoords(point: {x: number, y: number}) {
     const pos = new Vec2d();
-    pos.x = Game.PATH_GRID_OFFSET.x + point.x * PATH_GRID_UNIT_WIDTH;
-    pos.y = Game.PATH_GRID_OFFSET.y + point.y * PATH_GRID_UNIT_HEIGHT;
+    pos.x = Game.GRID_OFFSET.x + point.x * GRID_UNIT_WIDTH;
+    pos.y = Game.GRID_OFFSET.y + point.y * GRID_UNIT_HEIGHT;
     return pos;
   }
 
@@ -1623,8 +1619,8 @@ const renderGridGrid = (
     if (!game.tileGrid) return;
     const grid = game.tileGrid;
 
-    const width = PATH_GRID_UNIT_WIDTH;
-    const height = PATH_GRID_UNIT_HEIGHT;
+    const width = GRID_UNIT_WIDTH;
+    const height = GRID_UNIT_HEIGHT;
     for (let row = 0; row < grid.length; row++) {
       for (let col = 0; col < grid[row].length; col++) {
         const pos = game.tileCenterFromGridCoords({x: col, y: row});
