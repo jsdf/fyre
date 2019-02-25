@@ -1299,6 +1299,8 @@ class Grid {
   }
 }
 
+type TentGroup = 'red' | 'green' | 'blue';
+
 class Game {
   frame = 0;
   player = new Player();
@@ -1320,7 +1322,7 @@ class Game {
   view = new View();
 
   tentAdjacencies: Map<number, Array<number>> = new Map();
-  tentGroups: Map<number, ?string> = new Map();
+  tentGroups: Map<number, ?TentGroup> = new Map();
 
   constructor() {
     this._spawnObjects();
