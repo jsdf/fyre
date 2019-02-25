@@ -210,6 +210,7 @@ class GameObject {
   bboxEnd = new Vec2d(); // bottom right
 
   enabled = true; // visible and collidable
+  solid = false; // player cannot pass through
   zLayer = 0;
 
   constructor(init?: Vec2dInit) {
@@ -280,6 +281,7 @@ class Tent extends GameObject {
   damageTaken = 0;
   occupied = false;
   captured = false;
+  solid = true;
   sprite = assets.dstent;
   bboxStart = new Vec2d({x: 6, y: 16});
   bboxEnd = new Vec2d({x: 40, y: 33});
@@ -423,6 +425,7 @@ class CheeseSandwich extends Powerup {
 }
 
 class Bus extends GameObject {
+  solid = true;
   sprite = assets.bus;
   bboxStart = new Vec2d({x: 16, y: 22});
   bboxEnd = new Vec2d({x: 82, y: 53});
@@ -1467,13 +1470,11 @@ class Game {
   }
 
   _handleCollision(object: GameObject, otherObject: GameObject) {
+    // disabled objects can't be collided with
     if (!otherObject.enabled) return;
+
     // prevent penetration of solid objects
-    //
-    if (
-      object instanceof Player &&
-      (otherObject instanceof Tent || otherObject instanceof Bus)
-    ) {
+    if (object instanceof Player && otherObject.solid) {
       object.pos.sub(object.lastMove);
     }
 
