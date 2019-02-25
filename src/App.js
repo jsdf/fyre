@@ -329,6 +329,7 @@ class Tent extends GameObject {
   pissOn() {
     if (this.pissiness < Tent.MAX_PISSINESS) {
       this.pissiness++;
+      playSound(sounds.hit);
     }
   }
 
