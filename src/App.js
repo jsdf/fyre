@@ -612,7 +612,7 @@ class AIFestivalGoer extends FestivalGoer {
       this.enabled = false;
       tent.occupy();
 
-      game.checkForGroupsAdjacent(tent);
+      game.checkForTentGroupsAdjacent(tent);
       playSound(sounds.occupy);
       game.removeWorldObject(this);
     }
@@ -852,7 +852,7 @@ class TentPissingState extends TimedAttackState {
   exit(game: Game) {
     this.target.pissOn();
 
-    game.checkForGroupsAdjacent(this.target);
+    game.checkForTentGroupsAdjacent(this.target);
   }
 }
 
@@ -929,7 +929,7 @@ class SmashingState extends TimedAttackState {
   exit(game: Game) {
     game.removeWorldObject(this.animation);
     this.target.doDamage();
-    game.checkForGroupsAdjacent(this.target);
+    game.checkForTentGroupsAdjacent(this.target);
   }
 }
 
@@ -1517,16 +1517,16 @@ class Game {
     }
   }
 
-  checkForGroupsAdjacent(start: Tent) {
+  checkForTentGroupsAdjacent(start: Tent) {
     this.tentGroups.clear();
 
     typeFilter(this.worldObjects, Tent).forEach(tent =>
-      this._checkAndColorGraph(tent)
+      this._findAndColorTentGroup(tent)
     );
   }
 
-  _checkAndColorGraph(start: Tent) {
-    const {visited, containsOccupant} = this._checkForGroup(start);
+  _findAndColorTentGroup(start: Tent) {
+    const {visited, containsOccupant} = this._checkForTentGroup(start);
 
     visited.forEach(tent => {
       if (tent.isRuinedByPlayer()) {
@@ -1544,7 +1544,7 @@ class Game {
     });
   }
 
-  _checkForGroup(start: Tent) {
+  _checkForTentGroup(start: Tent) {
     const visited = new Set();
     let containsOccupant = false;
 
