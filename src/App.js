@@ -24,8 +24,9 @@ const SCALE = 2;
 const DEBUG_OBJECTS = false;
 const DEBUG_AI_TARGETS = false;
 const DEBUG_AI_STATE = true;
-const DEBUG_BBOX = true;
+const DEBUG_BBOX = false;
 const DEBUG_PLAYER_STATE = true;
+const DEBUG_WORLD_STATE = true;
 const DEBUG_PATHFINDING_NODES = false;
 const DEBUG_PATHFINDING_BBOXES = false;
 const DEBUG_PATH_FOLLOWING = false;
@@ -283,10 +284,24 @@ class Tent extends GameObject {
   captured = false;
   solid = true;
   sprite = assets.dstent;
+  intersectingPissArea: ?PissArea = null;
   bboxStart = new Vec2d({x: 6, y: 16});
   bboxEnd = new Vec2d({x: 40, y: 33});
+  lastPissedOnStart = 0;
   static MAX_DAMAGE = 1;
-  static MAX_PISSINESS = 1;
+  static MAX_PISSINESS = 9;
+  static PISS_TIME = 100;
+
+  update(game: Game) {
+    if (this.intersectingPissArea) {
+      this.intersectingPissArea = null;
+
+      if (Date.now() > this.lastPissedOnStart + Tent.PISS_TIME) {
+        this.pissOn();
+        this.lastPissedOnStart = Date.now();
+      }
+    }
+  }
 
   doDamage() {
     if (this.damageTaken < Tent.MAX_DAMAGE) {
@@ -1492,6 +1507,10 @@ class Game {
       }
     }
 
+    if (object instanceof Tent && otherObject instanceof PissArea) {
+      object.intersectingPissArea = otherObject;
+    }
+
     if (object instanceof Player && otherObject instanceof Powerup) {
       otherObject.pickedUp(object);
     }
@@ -2152,6 +2171,16 @@ const Hud = (props: {game: Game}) => {
                   .distanceTo(target.getCenter())
                   .toFixed(2),
               },
+            },
+            null,
+            2
+          )}
+      </pre>
+      <pre>
+        {DEBUG_WORLD_STATE &&
+          JSON.stringify(
+            {
+              worldObjects: props.game.worldObjects.length,
             },
             null,
             2
