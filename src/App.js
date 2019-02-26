@@ -1388,9 +1388,12 @@ class Grid {
 
 type TentGroup = 'red' | 'green' | 'blue';
 
+type Screen = 'title' | 'play';
+
 class Game {
   frame = 0;
   player = new Player();
+  screen: Screen = 'title';
   keys: KeyStates = {
     up: false,
     down: false,
@@ -1542,6 +1545,12 @@ class Game {
   };
 
   update() {
+    if (this.screen === 'title') {
+      if (this.keys.attack) {
+        this.screen = 'play';
+      }
+      return;
+    }
     for (let i = 0; i < this.worldObjects.length; i++) {
       this.worldObjects[i].update(this);
     }
@@ -2108,7 +2117,101 @@ const renderTarget = (
   }
 };
 
+const getScrollingSandImageData = (() => {
+  let sandImage = null;
+  let workingImageData = null;
+
+  return () => {
+    if (!(sandImage && workingImageData)) {
+      const image = getImage(assets.titlesand);
+      if (image) {
+        const canvas = document.createElement('canvas');
+        canvas.width = image.width * 2;
+        canvas.height = image.height;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(image, 0, 0);
+        ctx.drawImage(image, image.width, 0);
+
+        sandImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        workingImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      }
+    }
+
+    return {sandImage, workingImageData};
+  };
+})();
+
+const renderTitleScreen = (
+  canvas: HTMLCanvasElement,
+  ctx: CanvasRenderingContext2D,
+  game: Game
+) => {
+  ctx.fillStyle = '#0039c6';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const {sandImage, workingImageData} = getScrollingSandImageData();
+  if (!(sandImage && workingImageData)) return;
+  const stride = 4;
+  const slowdownFactor = 2;
+  const parallaxRowHeight = 2;
+  const parallaxRowIncrease = 1;
+
+  for (let row = 0; row < sandImage.height; row++) {
+    for (var col = 0; col < sandImage.width; col++) {
+      const rowPixelBase = row * sandImage.width * stride;
+      const pixelBase = rowPixelBase + col * stride;
+      const offsetPixelBase =
+        rowPixelBase +
+        ((col +
+          Math.floor(
+            Math.floor(
+              Math.sqrt(row) / parallaxRowHeight + parallaxRowIncrease
+            ) *
+              (-game.frame / slowdownFactor)
+          )) %
+          sandImage.width) *
+          stride;
+
+      workingImageData.data[offsetPixelBase + 0] =
+        sandImage.data[pixelBase + 0];
+      workingImageData.data[offsetPixelBase + 1] =
+        sandImage.data[pixelBase + 1];
+      workingImageData.data[offsetPixelBase + 2] =
+        sandImage.data[pixelBase + 2];
+      // workingImageData.data[offsetPixelBase + 3] =
+      //   sandImage.data[pixelBase + 3];
+    }
+  }
+
+  const skyImage = getImage(assets.sky);
+  if (!skyImage) return;
+
+  for (
+    let skyTileCol = 0;
+    skyTileCol < canvas.width / skyImage.width;
+    skyTileCol++
+  ) {
+    ctx.drawImage(
+      skyImage,
+      skyTileCol * skyImage.width,
+      canvas.height - workingImageData.height - skyImage.height,
+      skyImage.width,
+      skyImage.height
+    );
+  }
+
+  ctx.putImageData(
+    workingImageData,
+    0,
+    canvas.height - workingImageData.height
+  );
+};
+
 function renderFrame(canvas, ctx, game, editorModeState) {
+  if (game.screen === 'title') {
+    return renderTitleScreen(canvas, ctx, game);
+  }
+
   PERF_FRAMETIME && console.time('render frame');
   ctx.globalCompositeOperation = 'source-over';
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -2240,6 +2343,7 @@ function renderFrame(canvas, ctx, game, editorModeState) {
 }
 
 const Hud = (props: {game: Game}) => {
+  if (props.game.screen === 'title') return null;
   const {target} = props.game.player;
   return (
     <div style={{position: 'absolute', top: 0, left: 0}}>

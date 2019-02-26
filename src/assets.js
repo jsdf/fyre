@@ -1,6 +1,8 @@
 // @flow
 
 export default {
+  sky: require('./assets/sky.png'),
+  titlesand: require('./assets/titlesand.png'),
   dssand2dark: require('./assets/dssand2darkgrey1x.png'),
   dssand2: require('./assets/dssand21x.png'),
   dstent: require('./assets/dstent.png'),
