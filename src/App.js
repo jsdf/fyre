@@ -20,13 +20,13 @@ const GRID_ROWS = 17 * GRID_SUBDIV;
 const GRID_COLS = 18 * GRID_SUBDIV;
 const GRID_UNIT_WIDTH = 64 / GRID_SUBDIV;
 const GRID_UNIT_HEIGHT = 64 / GRID_SUBDIV;
-const SCALE = 2;
+const SCALE = 3;
 const DEBUG_OBJECTS = false;
 const DEBUG_AI_TARGETS = false;
-const DEBUG_AI_STATE = true;
+const DEBUG_AI_STATE = false;
 const DEBUG_BBOX = false;
-const DEBUG_PLAYER_STATE = true;
-const DEBUG_WORLD_STATE = true;
+const DEBUG_PLAYER_STATE = false;
+const DEBUG_WORLD_STATE = false;
 const DEBUG_PATHFINDING_NODES = false;
 const DEBUG_PATHFINDING_BBOXES = false;
 const DEBUG_PATH_FOLLOWING = false;
@@ -104,9 +104,11 @@ function memoizedVec2dZeroArgDeriver(derive: () => Vec2d) {
   };
 }
 
+type AssetURI = $Values<typeof assets> | '';
+
 const getImage = (() => {
   const cache = new Map();
-  return (url: $Values<typeof assets> | '') => {
+  return (url: AssetURI) => {
     if (url === '') {
       return;
     }
@@ -182,7 +184,7 @@ function precacheAudioAssets() {
 }
 
 function frameCycle(
-  frameAssets: Array<$Values<typeof assets>>,
+  frameAssets: Array<AssetURI>,
   framelength: number,
   tick: number
 ) {
@@ -206,7 +208,7 @@ class GameObject {
   static maxId = 0;
   id = GameObject.maxId++;
   pos: Vec2d = new Vec2d();
-  sprite = '';
+  sprite: AssetURI = '';
   bboxStart = new Vec2d(); // top left
   bboxEnd = new Vec2d(); // bottom right
 
@@ -277,6 +279,66 @@ class Smoke extends GameObject {
   }
 }
 
+function linear(n: number): number {
+  return n;
+}
+
+function outCube(n: number): number {
+  return --n * n * n + 1;
+}
+
+class Particle {
+  sprite: AssetURI;
+  duration: number;
+  startPos: Vec2d;
+  endPos: Vec2d;
+  startTime: number = Date.now();
+  pos: Vec2d;
+  ease: number => number;
+
+  constructor(
+    sprite: AssetURI,
+    duration: number,
+    startPos: Vec2d,
+    endPos: Vec2d,
+    ease: number => number = linear
+  ) {
+    this.sprite = sprite;
+    this.duration = duration;
+    this.startPos = startPos;
+    this.endPos = endPos;
+    this.ease = ease;
+    this.pos = startPos.clone();
+  }
+}
+
+class ParticleSystem {
+  particles: Array<Particle> = [];
+  update() {
+    let anyExpired = false;
+    const now = Date.now();
+    for (let i = 0; i < this.particles.length; i++) {
+      const particle = this.particles[i];
+      const progress = particle.ease(
+        (now - particle.startTime) / particle.duration
+      );
+      if (progress > 1) {
+        anyExpired = true;
+      }
+      particle.pos
+        .copyFrom(particle.endPos)
+        .sub(particle.startPos)
+        .multiplyScalar(progress)
+        .add(particle.startPos);
+    }
+    if (anyExpired) {
+      this.particles = this.particles.filter(
+        p => p.startTime + p.duration > now
+      );
+    }
+  }
+}
+
 class Tent extends GameObject {
   pissiness = 0;
   damageTaken = 0;
@@ -288,19 +350,30 @@ class Tent extends GameObject {
   bboxStart = new Vec2d({x: 6, y: 16});
   bboxEnd = new Vec2d({x: 40, y: 33});
   lastPissedOnStart = 0;
+  particleSystem = new ParticleSystem();
   static MAX_DAMAGE = 1;
-  static MAX_PISSINESS = 9;
-  static PISS_TIME = 100;
+  static MAX_PISSINESS = 3;
+  static PISS_TIME = 300;
 
   update(game: Game) {
     if (this.intersectingPissArea) {
       this.intersectingPissArea = null;
 
-      if (Date.now() > this.lastPissedOnStart + Tent.PISS_TIME) {
+      // update from freely pissing piss area
+      if (
+        this.isUsable() &&
+        Date.now() > this.lastPissedOnStart + Tent.PISS_TIME
+      ) {
         this.pissOn();
+        game.player.score += 100;
+        if (this.isRuinedByPlayer()) {
+          game.checkForTentGroupsAdjacent(this);
+        }
+
         this.lastPissedOnStart = Date.now();
       }
     }
+    this.particleSystem.update();
   }
 
   doDamage() {
@@ -330,6 +403,20 @@ class Tent extends GameObject {
     if (this.pissiness < Tent.MAX_PISSINESS) {
       this.pissiness++;
       playSound(sounds.hit);
+
+      {
+        // particle
+        const sprite = assets.plus100;
+        const duration = 500;
+        const startPos = this.getCenter()
+          .clone()
+          .add({x: Math.random() * 10, y: Math.random() * 5});
+        const endPos = startPos.clone().add({x: 0, y: -10});
+        const ease = outCube;
+        this.particleSystem.particles.push(
+          new Particle(sprite, duration, startPos, endPos, ease)
+        );
+      }
     }
   }
 
@@ -341,7 +428,7 @@ class Tent extends GameObject {
   }
 
   isUsable() {
-    return !this.isRuinedByPlayer() && !this.occupied;
+    return !this.isRuinedByPlayer() && !this.occupied && !this.captured;
   }
 
   capture() {
@@ -606,7 +693,7 @@ class AIFestivalGoer extends FestivalGoer {
   static DIALOG_VISIBLE_TIME = 3000;
   static DIALOG_CHANCE = 10000;
   enterTent(tent: Tent, game: Game) {
-    if (!tent.isUsable() || tent.captured) {
+    if (!tent.isUsable()) {
       // give up on this one, find another
       this.clearTarget();
     } else {
@@ -997,7 +1084,6 @@ class Player extends FestivalGoer {
       .filter(
         t =>
           t.isUsable() &&
-          !game.isTentCaptured(t) &&
           // if we're out of piss, only find attackable targets.
           (this.piss > 0
             ? this.withinPissRange(t)
@@ -1539,6 +1625,10 @@ class Game {
             this.tentGroups.set(tent.id, 'red');
           } else {
             this.tentGroups.set(tent.id, 'blue');
+            if (!tent.captured) {
+              this.player.score += 500;
+            }
+            tent.captured = true;
           }
         }
       }
@@ -1888,7 +1978,7 @@ const renderImage = (
   ctx: CanvasRenderingContext2D,
   view: View,
   pos: Vec2d,
-  imageUrl: $Values<typeof assets>
+  imageUrl: AssetURI
 ) => {
   const image = getImage(imageUrl);
   if (!image) return;
@@ -1897,6 +1987,24 @@ const renderImage = (
     image,
     Math.floor(view.toScreenX(pos.x)),
     Math.floor(view.toScreenY(pos.y)),
+    Math.floor(image.width),
+    Math.floor(image.height)
+  );
+};
+
+const renderImageCentered = (
+  ctx: CanvasRenderingContext2D,
+  view: View,
+  pos: Vec2d,
+  imageUrl: AssetURI
+) => {
+  const image = getImage(imageUrl);
+  if (!image) return;
+
+  ctx.drawImage(
+    image,
+    Math.floor(view.toScreenX(pos.x) - image.width / 2),
+    Math.floor(view.toScreenY(pos.y) - image.height / 2),
     Math.floor(image.width),
     Math.floor(image.height)
   );
@@ -1949,8 +2057,15 @@ const renderTent = (
         tent.pos.clone().add({x: -8, y: 0}),
         assets.pissed
       );
-    } else if (tentGroup === 'blue') {
-      renderLabel(ctx, view, tent, 'owned', 'blue', -5);
+    } else if (tent.captured) {
+      // renderLabel(ctx, view, tent, 'owned', 'blue', -5);
+      renderImage(ctx, view, tent.pos.clone().add({x: -8, y: 0}), assets.owned);
+    } else {
+      // render particles
+      for (var i = 0; i < tent.particleSystem.particles.length; i++) {
+        const particle = tent.particleSystem.particles[i];
+        renderImageCentered(ctx, view, particle.pos, particle.sprite);
+      }
     }
   }
 };

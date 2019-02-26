@@ -23,4 +23,6 @@ export default {
   smoke1: require('./assets/smoke1.png'),
   smoke2: require('./assets/smoke2.png'),
   smoke3: require('./assets/smoke3.png'),
+  plus100: require('./assets/100.png'),
+  owned: require('./assets/owned.png'),
 };
