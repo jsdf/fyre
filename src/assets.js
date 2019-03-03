@@ -1,9 +1,15 @@
 // @flow
 
 export default {
+  // title
   titletext: require('./assets/titletext.png'),
+  cloud1: require('./assets/cloud1.png'),
+  titlebusbody: require('./assets/titlebusbody.png'),
+  titlebuswheels1: require('./assets/titlebuswheels1.png'),
+  titlebuswheels2: require('./assets/titlebuswheels2.png'),
   sky: require('./assets/sky.png'),
   titlesand: require('./assets/titlesand.png'),
+  // game
   dssand2dark: require('./assets/dssand2darkgrey1x.png'),
   dssand2: require('./assets/dssand21x.png'),
   dstent: require('./assets/dstent.png'),

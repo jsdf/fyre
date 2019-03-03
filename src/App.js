@@ -36,6 +36,7 @@ const DEBUG_DISABLE_PEOPLE = false;
 const DEBUG_TENT_GROUPS = false;
 const DARK = false;
 const DRAW_HUD = true;
+const ENABLE_MUSIC = false;
 const SOUND_VOLUME = 0.5;
 const TENT_ADJACENCY_RADIUS = 100;
 const PERF_FRAMETIME = false;
@@ -72,6 +73,15 @@ function throttle<T>(fn: (arg: T) => void, time: number): (arg: T) => void {
     }
   };
 }
+
+const errorOnce = (() => {
+  const seen: Set<string> = new Set();
+  return msg => {
+    if (seen.has(msg)) return;
+    seen.add(msg);
+    console.error(msg);
+  };
+})();
 
 function memoizedVec2dOneArgDeriver(
   getInput: () => Vec2d,
@@ -139,6 +149,7 @@ declare class Audio {
   pause: Function;
   volume: number;
   loop: boolean;
+  paused: boolean;
 }
 
 const getSound = (() => {
@@ -169,10 +180,12 @@ const getSound = (() => {
 function playSound(url: string) {
   const sound = getSound(url);
   if (sound) {
-    sound.play();
+    sound.play().catch(err => {
+      errorOnce('sound not enabled ' + JSON.stringify(url));
+    });
     sound.volume = SOUND_VOLUME;
   } else {
-    console.error('sound not ready', JSON.stringify(url));
+    errorOnce('sound not ready ' + JSON.stringify(url));
   }
 }
 
@@ -1096,7 +1109,12 @@ class Player extends FestivalGoer {
     const target = tentsByDistance.length ? tentsByDistance[0] : null;
     this.target = target;
 
-    if (game.keys.attack && target && this.state instanceof IdleState) {
+    if (
+      game.keys.attack &&
+      target &&
+      (this.state instanceof IdleState ||
+        this.state instanceof TargetSeekingState)
+    ) {
       if (this.withinAttackRange(target) && this.energy > 0) {
         this.doSmash(target, game);
       } else {
@@ -1106,6 +1124,12 @@ class Player extends FestivalGoer {
           this.doPissOnTent(target, game);
         }
       }
+    } else if (
+      game.keys.attack &&
+      (this.state instanceof IdleState ||
+        this.state instanceof TargetSeekingState)
+    ) {
+      // go to TargetSeekingState
     }
 
     this.updateState(game);
@@ -1390,6 +1414,28 @@ type TentGroup = 'red' | 'green' | 'blue';
 
 type Screen = 'title' | 'play';
 
+class TitleScreen {
+  busAnim = new BusAnimation();
+  startedMusic = false;
+  update(game: Game) {
+    this.busAnim.update(game);
+
+    if (game.keys.attack) {
+      game.screen = 'play';
+      game.startGame();
+    }
+
+    if (!this.startedMusic && ENABLE_MUSIC) {
+      playSound(sounds.miami);
+      const sound = getSound(sounds.miami);
+      if (sound && !sound.paused) {
+        sound.loop = true;
+        this.startedMusic = true;
+      }
+    }
+  }
+}
+
 class Game {
   frame = 0;
   player = new Player();
@@ -1414,7 +1460,9 @@ class Game {
   tentAdjacencies: Map<number, Array<number>> = new Map();
   tentGroups: Map<number, ?TentGroup> = new Map();
 
-  constructor() {
+  titleScreen = new TitleScreen();
+
+  startGame() {
     this._spawnObjects();
 
     this.addWorldObject(this.player);
@@ -1545,17 +1593,22 @@ class Game {
   };
 
   update() {
-    if (this.screen === 'title') {
-      if (this.keys.attack) {
-        this.screen = 'play';
+    switch (this.screen) {
+      case 'title': {
+        this.titleScreen.update(this);
+        break;
       }
-      return;
+      case 'play': {
+        for (let i = 0; i < this.worldObjects.length; i++) {
+          this.worldObjects[i].update(this);
+        }
+        this._detectCollisions();
+        this._updateViewOffset();
+        break;
+      }
+      default:
+        return (this.screen: empty);
     }
-    for (let i = 0; i < this.worldObjects.length; i++) {
-      this.worldObjects[i].update(this);
-    }
-    this._detectCollisions();
-    this._updateViewOffset();
   }
 
   _updateViewOffset() {
@@ -2141,6 +2194,57 @@ const getScrollingSandImageData = (() => {
   };
 })();
 
+type Keyframe = {tick: number, pos: Vec2dInit};
+class Animation {
+  keyframes: Array<Keyframe> = [];
+  pos = new Vec2d();
+  currentKeyframeIndex = 0;
+
+  getNextKeyframeIndex(index: number): number {
+    return (index + 1) % this.keyframes.length;
+  }
+
+  constructor() {
+    if (this.keyframes.length) {
+      this.pos.copyFrom(this.keyframes[0].pos);
+    }
+  }
+
+  update(game: Game) {
+    const maxTick = last(this.keyframes).tick;
+    const animTick = game.frame % (maxTick + 1);
+    if (animTick === maxTick) {
+      // wrap around
+      this.currentKeyframeIndex = 0;
+    } else if (
+      animTick >=
+      this.keyframes[this.getNextKeyframeIndex(this.currentKeyframeIndex)].tick
+    ) {
+      // advance frame
+      this.currentKeyframeIndex = this.getNextKeyframeIndex(
+        this.currentKeyframeIndex
+      );
+    }
+
+    const currentFrame = this.keyframes[this.currentKeyframeIndex];
+    const nextFrame = this.keyframes[
+      this.getNextKeyframeIndex(this.currentKeyframeIndex)
+    ];
+    const progress =
+      (clamp(animTick, currentFrame.tick, nextFrame.tick) - currentFrame.tick) /
+      (nextFrame.tick - currentFrame.tick);
+    this.pos.lerp(currentFrame.pos, nextFrame.pos, progress);
+  }
+}
+
+class BusAnimation extends Animation {
+  keyframes = [
+    {tick: 71, pos: {x: 0, y: 0}},
+    {tick: 71 + 2, pos: {x: 0, y: -2}},
+    {tick: 71 + 4, pos: {x: 0, y: 0}},
+  ];
+}
+
 const renderTitleScreen = (
   canvas: HTMLCanvasElement,
   ctx: CanvasRenderingContext2D,
@@ -2151,38 +2255,41 @@ const renderTitleScreen = (
 
   const {sandImage, workingImageData} = getScrollingSandImageData();
   if (!(sandImage && workingImageData)) return;
-  const stride = 4;
-  const slowdownFactor = 2;
-  const parallaxRowHeight = 2;
-  const parallaxRowIncrease = 1;
 
-  for (let row = 0; row < sandImage.height; row++) {
-    for (var col = 0; col < sandImage.width; col++) {
-      const rowPixelBase = row * sandImage.width * stride;
-      const pixelBase = rowPixelBase + col * stride;
-      const offsetPixelBase =
-        rowPixelBase +
-        ((col +
-          Math.floor(
+  // scrolling sand
+  {
+    const stride = 4;
+    const slowdownFactor = 2;
+    const parallaxRowHeight = 2;
+    const parallaxRowIncrease = 1;
+
+    for (let row = 0; row < sandImage.height; row++) {
+      for (var col = 0; col < sandImage.width; col++) {
+        const rowPixelBase = row * sandImage.width * stride;
+        const pixelBase = rowPixelBase + col * stride;
+        const offsetPixelBase =
+          rowPixelBase +
+          ((col +
             Math.floor(
-              Math.sqrt(row) / parallaxRowHeight + parallaxRowIncrease
-            ) *
-              (-game.frame / slowdownFactor)
-          )) %
-          sandImage.width) *
-          stride;
+              Math.floor(
+                Math.sqrt(row) / parallaxRowHeight + parallaxRowIncrease
+              ) *
+                (-game.frame / slowdownFactor)
+            )) %
+            sandImage.width) *
+            stride;
 
-      workingImageData.data[offsetPixelBase + 0] =
-        sandImage.data[pixelBase + 0];
-      workingImageData.data[offsetPixelBase + 1] =
-        sandImage.data[pixelBase + 1];
-      workingImageData.data[offsetPixelBase + 2] =
-        sandImage.data[pixelBase + 2];
-      // workingImageData.data[offsetPixelBase + 3] =
-      //   sandImage.data[pixelBase + 3];
+        workingImageData.data[offsetPixelBase + 0] =
+          sandImage.data[pixelBase + 0];
+        workingImageData.data[offsetPixelBase + 1] =
+          sandImage.data[pixelBase + 1];
+        workingImageData.data[offsetPixelBase + 2] =
+          sandImage.data[pixelBase + 2];
+        // workingImageData.data[offsetPixelBase + 3] =
+        //   sandImage.data[pixelBase + 3];
+      }
     }
   }
-
   const skyImage = getImage(assets.sky);
   if (!skyImage) return;
 
@@ -2200,10 +2307,63 @@ const renderTitleScreen = (
     );
   }
 
-  ctx.putImageData(
-    workingImageData,
-    0,
-    canvas.height - workingImageData.height
+  for (
+    let sandTileCol = 0;
+    sandTileCol < canvas.width / skyImage.width;
+    sandTileCol++
+  ) {
+    ctx.putImageData(
+      workingImageData,
+      sandTileCol * workingImageData.width,
+      canvas.height - workingImageData.height
+    );
+  }
+  {
+    const cloud1Image = getImage(assets.cloud1);
+    if (!cloud1Image) return;
+
+    const cloudXRange = cloud1Image.width + canvas.width;
+    const cloudSlowdownFactor = 4;
+
+    ctx.drawImage(
+      cloud1Image,
+      Math.floor(
+        canvas.width - ((game.frame / cloudSlowdownFactor) % cloudXRange)
+      ),
+      Math.floor(canvas.height / 4 - cloud1Image.height / 2)
+    );
+  }
+  const titlebusbodyImage = getImage(assets.titlebusbody);
+  const titlebuswheels1Image = getImage(assets.titlebuswheels1);
+  const titlebuswheels2Image = getImage(assets.titlebuswheels2);
+  if (!(titlebusbodyImage && titlebuswheels1Image && titlebuswheels2Image))
+    return;
+
+  const {titleScreen} = game;
+
+  ctx.drawImage(
+    titlebusbodyImage,
+    Math.floor(
+      canvas.width / 2 - titlebusbodyImage.width / 2 + titleScreen.busAnim.pos.x
+    ),
+    Math.floor(
+      canvas.height / 2 -
+        titlebusbodyImage.height / 2 +
+        titleScreen.busAnim.pos.y
+    )
+  );
+  ctx.drawImage(
+    game.frame % 12 >= 6 ? titlebuswheels1Image : titlebuswheels2Image,
+    Math.floor(canvas.width / 2 - titlebuswheels1Image.width / 2),
+    Math.floor(canvas.height / 2 - titlebuswheels1Image.height / 2)
+  );
+  const titletextImage = getImage(assets.titletext);
+  if (!titletextImage) return;
+
+  ctx.drawImage(
+    titletextImage,
+    Math.floor(canvas.width / 2 - titletextImage.width / 2),
+    Math.floor(canvas.height / 3 - titletextImage.height / 2)
   );
 };
 

@@ -2,6 +2,10 @@
 
 export type Vec2dInit = {x: number, y: number};
 
+function lerp(v0, v1, t) {
+  return v0 * (1 - t) + v1 * t;
+}
+
 export default class Vec2d {
   x: number = 0;
   y: number = 0;
@@ -78,6 +82,12 @@ export default class Vec2d {
 
   directionTo(other: Vec2dInit) {
     return new Vec2d(other).sub(this).normalise();
+  }
+
+  lerp(v0: Vec2dInit, v1: Vec2dInit, t: number) {
+    this.x = lerp(v0.x, v1.x, t);
+    this.y = lerp(v0.y, v1.y, t);
+    return this;
   }
 
   toJSON() {
