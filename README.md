@@ -1,5 +1,13 @@
 # Fyre Festival Bed Piss Guy Simulator 2019
 
+
+### install 
+
+```
+npm install
+npm start
+```
+
 > These are the days we're gonna remember for the rest of our lives
 
 ### mechanics

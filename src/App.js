@@ -2336,11 +2336,38 @@ class BusAnimation extends Animation {
   ];
 }
 
+function drawImageWithHeatHaze(ctx, image, x, y, frame) {
+  const distortionInterval = 16;
+  for (let i = 0; i < image.height; i++) {
+    const rowIndex = (i + Math.floor(frame / 4)) % distortionInterval;
+
+    const isDistortedRow =
+      rowIndex == 0 || rowIndex == 3 || rowIndex == 8 || rowIndex == 15;
+
+    const destX = isDistortedRow ? Math.floor(Math.sin(i)) : 0;
+
+    ctx.drawImage(
+      image,
+      0, // source x
+      i, // source y
+      image.width, // source width
+      1, // source height
+      x + destX, // dest x
+      y + i, // dest y
+      image.width, // dest width
+      1 // dest height
+    );
+  }
+}
+
 const renderTitleScreen = (
   canvas: HTMLCanvasElement,
   ctx: CanvasRenderingContext2D,
   game: Game
 ) => {
+  const {titleScreen} = game;
+  if (!titleScreen) return;
+
   ctx.fillStyle = '#0039c6';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -2381,34 +2408,40 @@ const renderTitleScreen = (
       }
     }
   }
-  const skyImage = getImage(assets.sky);
-  if (!skyImage) return;
+  // sky
+  {
+    const skyImage = getImage(assets.sky);
+    if (!skyImage) return;
 
-  for (
-    let skyTileCol = 0;
-    skyTileCol < canvas.width / skyImage.width;
-    skyTileCol++
-  ) {
-    ctx.drawImage(
-      skyImage,
-      skyTileCol * skyImage.width,
-      canvas.height - workingImageData.height - skyImage.height,
-      skyImage.width,
-      skyImage.height
-    );
+    for (
+      let skyTileCol = 0;
+      skyTileCol < canvas.width / skyImage.width;
+      skyTileCol++
+    ) {
+      ctx.drawImage(
+        skyImage,
+        skyTileCol * skyImage.width,
+        canvas.height - workingImageData.height - skyImage.height,
+        skyImage.width,
+        skyImage.height
+      );
+    }
+
+    // actually draw sand
+    for (
+      let sandTileCol = 0;
+      sandTileCol < canvas.width / skyImage.width;
+      sandTileCol++
+    ) {
+      ctx.putImageData(
+        workingImageData,
+        sandTileCol * workingImageData.width,
+        canvas.height - workingImageData.height
+      );
+    }
   }
 
-  for (
-    let sandTileCol = 0;
-    sandTileCol < canvas.width / skyImage.width;
-    sandTileCol++
-  ) {
-    ctx.putImageData(
-      workingImageData,
-      sandTileCol * workingImageData.width,
-      canvas.height - workingImageData.height
-    );
-  }
+  // cloud
   {
     const cloud1Image = getImage(assets.cloud1);
     if (!cloud1Image) return;
@@ -2424,30 +2457,37 @@ const renderTitleScreen = (
       Math.floor(canvas.height / 4 - cloud1Image.height / 2)
     );
   }
-  const titlebusbodyImage = getImage(assets.titlebusbody);
-  const titlebuswheels1Image = getImage(assets.titlebuswheels1);
-  const titlebuswheels2Image = getImage(assets.titlebuswheels2);
-  if (!(titlebusbodyImage && titlebuswheels1Image && titlebuswheels2Image))
-    return;
 
-  const {titleScreen} = game;
+  // bus
+  {
+    const titlebusbodyImage = getImage(assets.titlebusbody);
+    const titlebuswheels1Image = getImage(assets.titlebuswheels1);
+    const titlebuswheels2Image = getImage(assets.titlebuswheels2);
+    if (!(titlebusbodyImage && titlebuswheels1Image && titlebuswheels2Image))
+      return;
 
-  ctx.drawImage(
-    titlebusbodyImage,
-    Math.floor(
+    // bus body
+    const busX = Math.floor(
       canvas.width / 2 - titlebusbodyImage.width / 2 + titleScreen.busAnim.pos.x
-    ),
-    Math.floor(
+    );
+    const busY = Math.floor(
       canvas.height / 2 -
         titlebusbodyImage.height / 2 +
         titleScreen.busAnim.pos.y
-    )
-  );
-  ctx.drawImage(
-    game.frame % 12 >= 6 ? titlebuswheels1Image : titlebuswheels2Image,
-    Math.floor(canvas.width / 2 - titlebuswheels1Image.width / 2),
-    Math.floor(canvas.height / 2 - titlebuswheels1Image.height / 2)
-  );
+    );
+
+    drawImageWithHeatHaze(ctx, titlebusbodyImage, busX, busY, game.frame);
+
+    // bus wheels
+    drawImageWithHeatHaze(
+      ctx,
+      game.frame % 12 >= 6 ? titlebuswheels1Image : titlebuswheels2Image,
+      Math.floor(canvas.width / 2 - titlebuswheels1Image.width / 2),
+      Math.floor(canvas.height / 2 - titlebuswheels1Image.height / 2),
+      game.frame
+    );
+  }
+
   const titletextImage = getImage(assets.titletext);
   if (!titletextImage) return;
 

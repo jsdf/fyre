@@ -2,6 +2,7 @@
   "name": "fyre",
   "version": "0.1.0",
   "private": true,
+  "homepage" : "https://jamesfriend.com.au/projects/fyre",
   "dependencies": {
     "easystarjs": "^0.4.3",
     "react": "^16.7.0",
@@ -12,6 +13,7 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
+    "deploy": "yarn build; cp -a build/ ~/code/jamesfriend-website/html/projects/fyre/; cd ~/code/jamesfriend-website/;node build;node upload",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {

@@ -97,6 +97,10 @@ export default class Vec2d {
     };
   }
 
+  toString() {
+    return `{x:${this.x}, y:${this.y}}`;
+  }
+
   equals(other: Vec2dInit): boolean {
     return this.x === other.x && this.y === other.y;
   }
