@@ -13,7 +13,8 @@ type GameObjectInit = {type: string, pos: {x: number, y: number}};
 
 const objects: Array<GameObjectInit> = objectsData;
 
-const PROD_OPTIMIZE = false;
+const DEV_MODE = true;
+const PROD_OPTIMIZE = !DEV_MODE;
 const MAX_OBJECT_SIZE = 96;
 const GRID_SUBDIV = 5;
 const GRID_ROWS = 17 * GRID_SUBDIV;
@@ -36,13 +37,17 @@ const DEBUG_DISABLE_PEOPLE = false;
 const DEBUG_TENT_GROUPS = false;
 const DARK = false;
 const DRAW_HUD = true;
-const ENABLE_MUSIC = false;
+const ENABLE_MUSIC = true;
 const SOUND_VOLUME = 0.5;
 const TENT_ADJACENCY_RADIUS = 100;
 const PERF_FRAMETIME = false;
 const PERF_PATHFINDING = false;
 const MOUSE_CONTROL = true;
+const MOUSE_MOVEMENT = false;
 const MAX_CAPTURABLE_TENT_GROUP = 3;
+const MOUSE_GO_MIN_DIST = 50;
+const GRID_START = new Vec2d({x: 20, y: 20});
+const BG_OFFSET = new Vec2d({x: -400, y: -200});
 
 function range(size: number) {
   return Array(size)
@@ -53,9 +58,6 @@ function range(size: number) {
 const [WALKABLE, AI_UNWALKABLE, UNWALKABLE] = range(3);
 
 type Walkability = typeof WALKABLE | typeof AI_UNWALKABLE | typeof UNWALKABLE;
-
-const GRID_START = new Vec2d({x: 20, y: 20});
-const BG_OFFSET = new Vec2d({x: -400, y: -200});
 
 function last<T>(arr: Array<T>): T {
   return arr[arr.length - 1];
@@ -602,6 +604,7 @@ class FestivalGoer extends GameObject {
   isMoving = false;
   isPathfinding = false;
   target: ?Tent = null;
+  pathfindingTargetPos: ?Vec2d = null;
   path: ?Path = null;
   stuck = false;
   activeDialog: ?{text: string, startTime: number} = null;
@@ -639,99 +642,11 @@ class FestivalGoer extends GameObject {
     this.state = nextState;
     this.state.enter(game);
   }
-}
 
-class FleeingState extends CharacterState {
-  static FLEE_TIME = 5000;
-  startTime = Date.now();
-  updateMove(character: AIFestivalGoer, game: Game, move: Vec2d) {
-    move.add(game.player.getCenter().directionTo(character.getCenter()));
-  }
-
-  update(game: Game) {
-    if (Date.now() > this.startTime + FleeingState.FLEE_TIME) {
-      return new IdleState();
-    }
-  }
-}
-
-class TargetSeekingState extends CharacterState {
-  character: AIFestivalGoer;
-  constructor(character: AIFestivalGoer) {
-    super();
-    this.character = character;
-  }
-
-  updateMove(character: AIFestivalGoer, game: Game, move: Vec2d) {
-    const path = character.path;
-    const target = character.target;
-    if (target) {
-      if (!(path || character.isPathfinding)) {
-        character.findPath(game, target);
-      } else if (path) {
-        const curPoint = path.getNextPoint();
-        if (curPoint && character.getCenter().distanceTo(curPoint) < 1) {
-          path.advance();
-        }
-
-        if (!path.nextPointIsDestination()) {
-          const nextPoint = path.getNextPoint();
-          if (!nextPoint) {
-            throw new Error('expected next point');
-          }
-          move.add(character.getCenter().directionTo(nextPoint));
-        } else {
-          move.add(character.getCenter().directionTo(target.getCenter()));
-        }
-      }
-    }
-  }
-
-  toString() {
-    return `${this.constructor.name} { target: ${
-      this.character.target ? this.character.target.id : '[none]'
-    } }`;
-  }
-}
-
-class AIFestivalGoer extends FestivalGoer {
-  static DIALOG = [
-    'Where can I charge my drone?',
-    "We'll remember this for the rest of our lives",
-    "I'm shooting video in both horizontal & vertical formats",
-    "They're not EarPods, they're AirPods",
-    'I quit my job to come to this',
-  ];
-
-  static DIALOG_VISIBLE_TIME = 3000;
-  static DIALOG_CHANCE = 10000;
-  enterTent(tent: Tent, game: Game) {
-    if (!tent.isUsable()) {
-      // give up on this one, find another
-      this.clearTarget();
-    } else {
-      this.enabled = false;
-      tent.occupy();
-
-      game.checkForTentGroupsAdjacent(tent);
-      playSound(sounds.occupy);
-      game.removeWorldObject(this);
-    }
-  }
-
-  runFromPiss(game: Game) {
-    this.clearTarget();
-    this.transitionTo(new FleeingState(), game);
-  }
-
-  tryAcquireTarget(game: Game) {
-    const tents = typeFilter(game.worldObjects, Tent);
-
-    const candidate = tents[Math.floor(Math.random() * tents.length)];
-
-    if (candidate && candidate.isUsable()) {
-      this.target = candidate;
-    }
+  clearTarget() {
+    this.target = null;
+    this.pathfindingTargetPos = null;
+    this.path = null;
   }
 
   findNearestWalkableTile(
@@ -771,10 +686,10 @@ class AIFestivalGoer extends FestivalGoer {
     return null;
   }
 
-  findPath(game: Game, target: Tent) {
+  findPath(game: Game, targetPos: Vec2d) {
     this.isPathfinding = true;
     let start = game.grid.toGridCoords(this.getCenter());
-    let end = game.grid.toGridCoords(target.getCenter());
+    let end = game.grid.toGridCoords(targetPos);
 
     const {tileGrid} = game.grid;
     if (tileGrid == null) {
@@ -820,7 +735,7 @@ class AIFestivalGoer extends FestivalGoer {
           } else {
             this.path = new Path(
               gridPath.length === 0
-                ? [target.pos]
+                ? [targetPos]
                 : gridPath.map(gridPoint =>
                     game.grid.tileCenterFromGridCoords(gridPoint)
                   )
@@ -843,6 +758,102 @@ class AIFestivalGoer extends FestivalGoer {
     }
 
     game.grid.easystar.calculate();
+  }
+}
+
+class FleeingState extends CharacterState {
+  static FLEE_TIME = 5000;
+  startTime = Date.now();
+  updateMove(character: AIFestivalGoer, game: Game, move: Vec2d) {
+    move.add(game.player.getCenter().directionTo(character.getCenter()));
+  }
+
+  update(game: Game) {
+    if (Date.now() > this.startTime + FleeingState.FLEE_TIME) {
+      return new IdleState();
+    }
+  }
+}
+
+class TargetSeekingState extends CharacterState {
+  character: FestivalGoer;
+  constructor(character: FestivalGoer) {
+    super();
+    this.character = character;
+  }
+
+  updateMove(character: FestivalGoer, game: Game, move: Vec2d) {
+    const path = character.path;
+    const {pathfindingTargetPos} = character;
+    if (pathfindingTargetPos) {
+      if (!(path || character.isPathfinding)) {
+        character.findPath(game, pathfindingTargetPos);
+      } else if (path) {
+        const curPoint = path.getNextPoint();
+        if (curPoint && character.getCenter().distanceTo(curPoint) < 1) {
+          path.advance();
+        }
+
+        if (!path.nextPointIsDestination()) {
+          const nextPoint = path.getNextPoint();
+          if (!nextPoint) {
+            throw new Error('expected next point');
+          }
+          move.add(character.getCenter().directionTo(nextPoint));
+        } else {
+          move.add(character.getCenter().directionTo(pathfindingTargetPos));
+        }
+      }
+    }
+  }
+
+  toString() {
+    return `${this.constructor.name} { targetPos: ${
+      this.character.pathfindingTargetPos
+        ? this.character.pathfindingTargetPos.toString()
+        : '[none]'
+    } }`;
+  }
+}
+
+class AIFestivalGoer extends FestivalGoer {
+  static DIALOG = [
+    'Where can I charge my drone?',
+    "We'll remember this for the rest of our lives",
+    "I'm shooting video in both horizontal & vertical formats",
+    "They're not EarPods, they're AirPods",
+    'I quit my job to come to this',
+  ];
+
+  static DIALOG_VISIBLE_TIME = 3000;
+  static DIALOG_CHANCE = 10000;
+  enterTent(tent: Tent, game: Game) {
+    if (!tent.isUsable()) {
+      // give up on this one, find another
+      this.clearTarget();
+    } else {
+      this.enabled = false;
+      tent.occupy();
+
+      game.checkForTentGroupsAdjacent(tent);
+      playSound(sounds.occupy);
+      game.removeWorldObject(this);
+    }
+  }
+
+  runFromPiss(game: Game) {
+    this.clearTarget();
+    this.transitionTo(new FleeingState(), game);
+  }
+
+  tryAcquireTarget(game: Game) {
+    const tents = typeFilter(game.worldObjects, Tent);
+
+    const candidate = tents[Math.floor(Math.random() * tents.length)];
+
+    if (candidate && candidate.isUsable()) {
+      this.target = candidate;
+    }
   }
 
   updateDialog() {
@@ -868,11 +879,6 @@ class AIFestivalGoer extends FestivalGoer {
     }
   }
 
-  clearTarget() {
-    this.target = null;
-    this.path = null;
-  }
-
   update(game: Game) {
     this.stuck = false;
     if (!this.target) {
@@ -880,6 +886,7 @@ class AIFestivalGoer extends FestivalGoer {
     }
 
     if (this.target && this.state instanceof IdleState) {
+      this.pathfindingTargetPos = this.target.getCenter();
       this.transitionTo(new TargetSeekingState(this), game);
     }
 
@@ -1059,22 +1066,45 @@ class Player extends FestivalGoer {
     return this.pos.distanceTo(tent.pos) < Player.MAX_PISS_DISTANCE;
   }
 
+  canSmashOrPiss() {
+    return (
+      this.state instanceof IdleState ||
+      this.state instanceof TargetSeekingState
+    );
+  }
+
   update(game: Game) {
-    let playerMove = new Vec2d();
+    let move = new Vec2d();
+
+    if (this.state instanceof TargetSeekingState) {
+      const {pathfindingTargetPos} = this;
+      if (pathfindingTargetPos) {
+        if (this.getCenter().distanceTo(pathfindingTargetPos) < 1) {
+          // at destination
+          this.clearTarget();
+          this.transitionTo(new IdleState(), game);
+        }
+      }
+    }
+
+    if (this.state instanceof TargetSeekingState) {
+      this.state.updateMove(this, game, move);
+    }
+
     DIRECTIONS.forEach(direction => {
       if (game.keys[direction]) {
-        playerMove.add(DIRECTIONS_VECTORS[direction]);
+        move.add(DIRECTIONS_VECTORS[direction]);
       }
     });
 
     if (
-      (playerMove.x !== 0 || playerMove.y !== 0) &&
+      (move.x !== 0 || move.y !== 0) &&
       // can't move in attacking state
       !(this.state instanceof SmashingState)
     ) {
-      playerMove = getMovementVelocity(playerMove, Player.MOVEMENT_SPEED);
+      move = getMovementVelocity(move, Player.MOVEMENT_SPEED);
       const lastPos = this.pos.clone();
-      this.pos.add(playerMove);
+      this.pos.add(move);
       const updatedCenter = this.getCenter();
       const walkability = game.grid.getGridTile(
         game.grid.toGridCoordsUnclamped(updatedCenter)
@@ -1086,50 +1116,70 @@ class Player extends FestivalGoer {
           this.pos = lastPos;
         }
       }
-      this.lastMove = playerMove;
+      this.lastMove = move;
       this.isMoving = true;
     } else {
       this.isMoving = false;
     }
 
-    // find target
-    const tentsByDistance = typeFilter(game.worldObjects, Tent)
-      .filter(
-        t =>
-          t.isUsable() &&
-          // if we're out of piss, only find attackable targets.
-          (this.piss > 0
-            ? this.withinPissRange(t)
-            : // if we're out of energy...
-            this.energy > 0
-            ? this.withinAttackRange(t)
-            : false)
-      )
-      .sort((a, b) => a.pos.distanceTo(this.pos) - b.pos.distanceTo(this.pos));
-    const target = tentsByDistance.length ? tentsByDistance[0] : null;
-    this.target = target;
+    if (MOUSE_CONTROL) {
+      const target = typeFilter(game.worldObjects, Tent).find(tent =>
+        hitTest(tent, game.cursorPos)
+      );
+      this.target = target;
 
-    if (
-      game.keys.attack &&
-      target &&
-      (this.state instanceof IdleState ||
-        this.state instanceof TargetSeekingState)
-    ) {
-      if (this.withinAttackRange(target) && this.energy > 0) {
-        this.doSmash(target, game);
-      } else {
-        if (MOUSE_CONTROL) {
-          this.doPissFreely(game);
+      if (game.keys.attack && this.canSmashOrPiss()) {
+        if (target && this.withinAttackRange(target) && this.energy > 0) {
+          this.doSmash(target, game);
+        } else {
+          if (
+            !MOUSE_MOVEMENT ||
+            this.getCenter().distanceTo(game.cursorPos) < MOUSE_GO_MIN_DIST
+          ) {
+            this.doPissFreely(game);
+          }
+        }
+      }
+    } else {
+      // find target
+      const tentsByDistance = typeFilter(game.worldObjects, Tent)
+        .filter(
+          t =>
+            t.isUsable() &&
+            // if we're out of piss, only find attackable targets.
+            (this.piss > 0
+              ? this.withinPissRange(t)
+              : // if we're out of energy...
+              this.energy > 0
+              ? this.withinAttackRange(t)
+              : false)
+        )
+        .sort(
+          (a, b) => a.pos.distanceTo(this.pos) - b.pos.distanceTo(this.pos)
+        );
+      const target = tentsByDistance.length ? tentsByDistance[0] : null;
+      this.target = target;
+
+      if (game.keys.attack && target && this.canSmashOrPiss()) {
+        if (this.withinAttackRange(target) && this.energy > 0) {
+          this.doSmash(target, game);
         } else {
           this.doPissOnTent(target, game);
         }
       }
-    } else if (
-      game.keys.attack &&
-      (this.state instanceof IdleState ||
-        this.state instanceof TargetSeekingState)
-    ) {
-      // go to TargetSeekingState
+    }
+
+    if (MOUSE_MOVEMENT) {
+      if (
+        game.keys.attack &&
+        (this.state instanceof IdleState ||
+          this.state instanceof TargetSeekingState)
+      ) {
+        if (this.getCenter().distanceTo(game.cursorPos) >= MOUSE_GO_MIN_DIST) {
+          this.transitionTo(new TargetSeekingState(this), game);
+          this.pathfindingTargetPos = game.cursorPos.clone();
+        }
+      }
     }
 
     this.updateState(game);
@@ -1184,9 +1234,27 @@ function collision(a: GameObject, b: GameObject) {
   return !(ax1 > bx2 || bx1 > ax2 || ay1 > by2 || by1 > ay2);
 }
 
+function hitTest(obj: GameObject, point: Vec2d) {
+  // work out the corners (x1,x2,y1,y1) of each rectangle
+  // top left
+  let ax1 = obj.pos.x + obj.bboxStart.x;
+  let ay1 = obj.pos.y + obj.bboxStart.y;
+  // bottom right
+  let ax2 = obj.pos.x + obj.bboxEnd.x;
+  let ay2 = obj.pos.y + obj.bboxEnd.y;
+  // top left
+  let bx1 = point.x;
+  let by1 = point.y;
+  // bottom right
+  let bx2 = point.x;
+  let by2 = point.y;
+
+  // test rectangular overlap
+  return !(ax1 > bx2 || bx1 > ax2 || ay1 > by2 || by1 > ay2);
+}
+
 class View {
-  static VIEWBOX_PADDING_X = 128;
-  static VIEWBOX_PADDING_Y = 64;
+  static VIEWBOX_PADDING_PCT = 20;
   offset = new Vec2d();
   toScreenX(x: number) {
     return x - this.offset.x;
@@ -1233,13 +1301,11 @@ class View {
   update(playerPos: Vec2d, viewWidth: number, viewHeight: number) {
     this.offset.x += View.calculateViewAdjustmentForDimension(
       this.offset.x,
-      View.VIEWBOX_PADDING_X,
       viewWidth,
       playerPos.x
     );
     this.offset.y += View.calculateViewAdjustmentForDimension(
       this.offset.y,
-      View.VIEWBOX_PADDING_Y,
       viewHeight,
       playerPos.y
     );
@@ -1248,7 +1314,6 @@ class View {
   static calculateViewAdjustmentForDimension(
     // arguments are scalar values along the relevant dimension
     offset: number,
-    paddingSize: number,
     viewportSize: number,
     playerPos: number
   ) {
@@ -1264,9 +1329,11 @@ class View {
     boxAbs = scrOff+boxRel
     if (plr - boxAbs < 0), scrOff -= plr - boxAbs
      */
-
-    const boxMinAbs = offset + paddingSize;
-    const boxMaxAbs = offset + viewportSize - paddingSize;
+    const percentPaddingSize = Math.floor(
+      viewportSize * (View.VIEWBOX_PADDING_PCT / 100)
+    );
+    const boxMinAbs = offset + percentPaddingSize;
+    const boxMaxAbs = offset + viewportSize - percentPaddingSize;
 
     const deltaMin = Math.min(playerPos - boxMinAbs, 0);
     const deltaMax = -Math.min(boxMaxAbs - playerPos, 0);
@@ -1421,8 +1488,7 @@ class TitleScreen {
     this.busAnim.update(game);
 
     if (game.keys.attack) {
-      game.screen = 'play';
-      game.startGame();
+      this.gotoPlayScreen(game);
     }
 
     if (!this.startedMusic && ENABLE_MUSIC) {
@@ -1432,6 +1498,23 @@ class TitleScreen {
         sound.loop = true;
         this.startedMusic = true;
       }
+    }
+  }
+
+  gotoPlayScreen(game: Game) {
+    game.screen = 'play';
+    game.startGame();
+    this.release(game);
+  }
+
+  release(game: Game) {
+    game.titleScreen = null;
+
+    const sound = getSound(sounds.miami);
+    if (sound) {
+      sound.pause();
+      // chrome autoplay policy sucks
+      setTimeout(() => sound.pause(), 10);
     }
   }
 }
@@ -1595,7 +1678,9 @@ class Game {
   update() {
     switch (this.screen) {
       case 'title': {
-        this.titleScreen.update(this);
+        if (this.titleScreen) {
+          this.titleScreen.update(this);
+        }
         break;
       }
       case 'play': {
@@ -1615,7 +1700,7 @@ class Game {
     const viewWidth = window.innerWidth / SCALE;
     const viewHeight = window.innerHeight / SCALE;
 
-    this.view.update(this.player.pos, viewWidth, viewHeight);
+    this.view.update(this.player.getCenter(), viewWidth, viewHeight);
   }
 
   _detectCollisions() {
@@ -2132,6 +2217,12 @@ const renderTent = (
   }
 };
 
+// function renderMovementCursor() {
+
+//   const image = getImage(assets.cursor);
+//   if (!image) return;
+// }
+
 const renderTarget = (
   ctx: CanvasRenderingContext2D,
   view: View,
@@ -2417,7 +2508,11 @@ function renderFrame(canvas, ctx, game, editorModeState) {
       }
       renderObjectImage(ctx, game.view, obj);
     } else if (obj instanceof FestivalGoer) {
-      if (DEBUG_PATH_FOLLOWING_STUCK && obj.stuck) {
+      if (
+        DEBUG_PATH_FOLLOWING_STUCK &&
+        obj.stuck
+        // || (obj instanceof Player && obj.pathfindingTargetPos)
+      ) {
         const {path} = obj;
         if (path) {
           let lastPoint = obj.getCenter();
@@ -2499,6 +2594,13 @@ function renderFrame(canvas, ctx, game, editorModeState) {
   if (target) {
     renderTarget(ctx, game.view, target, game);
   }
+
+  // if (MOUSE_CONTROL) {
+  //   if (game.player.distanceTo(game.cursorPos) > MOUSE_GO_MIN_DIST) {
+  //     renderMovementCursor(ctx,game.view)
+  //   }
+  // }
+
   PERF_FRAMETIME && console.timeEnd('render frame');
 }
 
@@ -3004,7 +3106,7 @@ class App extends Component<{}, void> {
         />
 
         {DRAW_HUD && <Hud game={this.game} />}
-        {!PROD_OPTIMIZE && <Editor ref={this._onRef} game={this.game} />}
+        {DEV_MODE && <Editor ref={this._onRef} game={this.game} />}
       </div>
     );
   }
