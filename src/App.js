@@ -5,13 +5,13 @@ import sounds from './sounds';
 import React, {Component} from 'react';
 import Vec2d from './Vec2d';
 import EasyStar from 'easystarjs';
-import objectsData from './objects.json';
+import objectsDataUntyped from './objects.json';
 import gridData from './grid.json';
 import type {Vec2dInit} from './Vec2d';
 
 type GameObjectInit = {type: string, pos: {x: number, y: number}};
 
-const objects: Array<GameObjectInit> = objectsData;
+const objectsData: Array<GameObjectInit> = objectsDataUntyped;
 
 const DEV_MODE = true;
 const PROD_OPTIMIZE = !DEV_MODE;
@@ -84,37 +84,6 @@ const errorOnce = (() => {
     console.error(msg);
   };
 })();
-
-function memoizedVec2dOneArgDeriver(
-  getInput: () => Vec2d,
-  derive: (input: Vec2d, result: Vec2d) => void
-): () => Vec2d {
-  const cacheKey: Vec2d = new Vec2d();
-  let cached: ?Vec2d = null;
-
-  return () => {
-    const input = getInput();
-    if (cached != null && cacheKey.equals(input)) {
-      return cached;
-    } else {
-      cacheKey.copyFrom(input);
-      cached = new Vec2d();
-      derive(input, cached);
-      return cached;
-    }
-  };
-}
-
-function memoizedVec2dZeroArgDeriver(derive: () => Vec2d) {
-  let result: ?Vec2d = null;
-
-  return () => {
-    if (result == null) {
-      result = derive();
-    }
-    return result;
-  };
-}
 
 type AssetURI = $Values<typeof assets> | '';
 
@@ -242,7 +211,7 @@ class GameObject {
     // noop
   }
 
-  getCenterLocalOffset = memoizedVec2dZeroArgDeriver(() =>
+  getCenterLocalOffset = Vec2d.memoizedZeroArgDeriver(() =>
     this.bboxEnd
       .clone()
       .sub(this.bboxStart)
@@ -250,14 +219,14 @@ class GameObject {
       .add(this.bboxStart)
   );
 
-  getCenter = memoizedVec2dOneArgDeriver(
+  getCenter = Vec2d.memoizedOneArgDeriver(
     () => this.pos,
     (pos, result) => {
       result.copyFrom(pos).add(this.getCenterLocalOffset());
     }
   );
 
-  getMax = memoizedVec2dOneArgDeriver(
+  getMax = Vec2d.memoizedOneArgDeriver(
     () => this.pos,
     (pos, result) => {
       result.copyFrom(pos).add(this.bboxEnd);
@@ -1587,7 +1556,7 @@ class Game {
   }
 
   _spawnObjects() {
-    objects.forEach(obj => {
+    objectsData.forEach(obj => {
       this.spawnObjectOfType(obj);
     });
 
@@ -1820,11 +1789,11 @@ class Game {
   }
 }
 
-const renderBBox = (
+function renderBBox(
   ctx: CanvasRenderingContext2D,
   view: View,
   obj: GameObject
-) => {
+) {
   ctx.strokeStyle = 'red';
 
   const x = Math.floor(view.toScreenX(obj.pos.x + obj.bboxStart.x));
@@ -1832,14 +1801,14 @@ const renderBBox = (
   const width = Math.floor(obj.bboxEnd.x - obj.bboxStart.x);
   const height = Math.floor(obj.bboxEnd.y - obj.bboxStart.y);
   ctx.strokeRect(x, y, width, height);
-};
+}
 
-const renderPoint = (
+function renderPoint(
   ctx: CanvasRenderingContext2D,
   view: View,
   pos: Vec2d,
   color: string
-) => {
+) {
   ctx.fillStyle = color;
 
   const x = Math.floor(view.toScreenX(pos.x - 2));
@@ -1847,14 +1816,14 @@ const renderPoint = (
   const width = 4;
   const height = 4;
   ctx.fillRect(x, y, width, height);
-};
+}
 
-const renderEditorGrid = (
+function renderEditorGrid(
   ctx: CanvasRenderingContext2D,
   view: View,
   game: Game,
   editorModeState: ?EditorModeState
-) => {
+) {
   const showGrid =
     DEBUG_PATHFINDING_BBOXES ||
     (editorModeState && editorModeState.mode === 'grid');
@@ -1891,13 +1860,13 @@ const renderEditorGrid = (
       }
     }
   }
-};
+}
 
-const renderFestivalGoerImage = (
+function renderFestivalGoerImage(
   ctx: CanvasRenderingContext2D,
   view: View,
   person: FestivalGoer
-) => {
+) {
   // TODO: move this to player class
   const facingRight = person.lastMove.x > 0;
 
@@ -1984,9 +1953,9 @@ const renderFestivalGoerImage = (
       view.toScreenY(person.pos.y)
     );
   }
-};
+}
 
-const renderBG = (ctx: CanvasRenderingContext2D, view: View) => {
+function renderBG(ctx: CanvasRenderingContext2D, view: View) {
   const image = getImage(assets.bg);
   if (!image) return;
 
@@ -1997,14 +1966,14 @@ const renderBG = (ctx: CanvasRenderingContext2D, view: View) => {
     image.width,
     image.height
   );
-};
+}
 
-const renderPissStream = (
+function renderPissStream(
   ctx: CanvasRenderingContext2D,
   view: View,
   from: Vec2d,
   to: Vec2d
-) => {
+) {
   ctx.strokeStyle = 'yellow';
   ctx.beginPath();
   ctx.moveTo(view.toScreenX(from.x), view.toScreenY(from.y));
@@ -2031,14 +2000,14 @@ const renderPissStream = (
     );
     ctx.stroke();
   }
-};
+}
 
-const renderDebugLine = (
+function renderDebugLine(
   ctx: CanvasRenderingContext2D,
   view: View,
   from: Vec2d,
   to: Vec2d
-) => {
+) {
   ctx.strokeStyle = 'blue';
   ctx.beginPath();
   ctx.moveTo(view.toScreenX(from.x), view.toScreenY(from.y));
@@ -2066,15 +2035,15 @@ const renderDebugLine = (
     Math.floor(view.toScreenY(reverseLine.y))
   );
   ctx.stroke();
-};
+}
 
-const renderDebugCircle = (
+function renderDebugCircle(
   ctx: CanvasRenderingContext2D,
   view: View,
   pos: Vec2d,
   radius: number,
   color: string = 'red'
-) => {
+) {
   ctx.strokeStyle = color;
   ctx.beginPath();
   ctx.arc(
@@ -2085,13 +2054,13 @@ const renderDebugCircle = (
     2 * Math.PI // endAngle
   );
   ctx.stroke();
-};
+}
 
-const renderObjectImage = (
+function renderObjectImage(
   ctx: CanvasRenderingContext2D,
   view: View,
   obj: GameObject
-) => {
+) {
   const image = getImage(obj.sprite);
 
   if (obj.enabled) {
@@ -2119,14 +2088,14 @@ const renderObjectImage = (
   if (DEBUG_BBOX) {
     renderBBox(ctx, view, obj);
   }
-};
+}
 
-const renderImage = (
+function renderImage(
   ctx: CanvasRenderingContext2D,
   view: View,
   pos: Vec2d,
   imageUrl: AssetURI
-) => {
+) {
   const image = getImage(imageUrl);
   if (!image) return;
 
@@ -2137,14 +2106,14 @@ const renderImage = (
     Math.floor(image.width),
     Math.floor(image.height)
   );
-};
+}
 
-const renderImageCentered = (
+function renderImageCentered(
   ctx: CanvasRenderingContext2D,
   view: View,
   pos: Vec2d,
   imageUrl: AssetURI
-) => {
+) {
   const image = getImage(imageUrl);
   if (!image) return;
 
@@ -2155,16 +2124,16 @@ const renderImageCentered = (
     Math.floor(image.width),
     Math.floor(image.height)
   );
-};
+}
 
-const renderLabel = (
+function renderLabel(
   ctx: CanvasRenderingContext2D,
   view: View,
   obj: GameObject,
   text: string,
   color: string,
   yOffset: number
-) => {
+) {
   ctx.font = '10px monospace';
   ctx.fillStyle = color;
 
@@ -2177,14 +2146,14 @@ const renderLabel = (
     Math.floor(view.toScreenX(tentCenter.x) - labelMetrics.width / 2),
     Math.floor(view.toScreenY(tentCenter.y) + yOffset)
   );
-};
+}
 
-const renderTent = (
+function renderTent(
   ctx: CanvasRenderingContext2D,
   view: View,
   tent: Tent,
   tentGroup: ?string
-) => {
+) {
   renderObjectImage(ctx, view, tent);
 
   if (tent.enabled) {
@@ -2215,20 +2184,14 @@ const renderTent = (
       }
     }
   }
-};
+}
 
-// function renderMovementCursor() {
-
-//   const image = getImage(assets.cursor);
-//   if (!image) return;
-// }
-
-const renderTarget = (
+function renderTarget(
   ctx: CanvasRenderingContext2D,
   view: View,
   target: Tent,
   game: Game
-) => {
+) {
   const image = getImage(assets.target);
   if (!image) return;
   const targetCenter = target.getCenter();
@@ -2259,7 +2222,7 @@ const renderTarget = (
       Math.floor(view.toScreenY(target.pos.y))
     );
   }
-};
+}
 
 const getScrollingSandImageData = (() => {
   let sandImage = null;
@@ -2360,11 +2323,11 @@ function drawImageWithHeatHaze(ctx, image, x, y, frame) {
   }
 }
 
-const renderTitleScreen = (
+function renderTitleScreen(
   canvas: HTMLCanvasElement,
   ctx: CanvasRenderingContext2D,
   game: Game
-) => {
+) {
   const {titleScreen} = game;
   if (!titleScreen) return;
 
@@ -2496,7 +2459,7 @@ const renderTitleScreen = (
     Math.floor(canvas.width / 2 - titletextImage.width / 2),
     Math.floor(canvas.height / 3 - titletextImage.height / 2)
   );
-};
+}
 
 function renderFrame(canvas, ctx, game, editorModeState) {
   if (game.screen === 'title') {

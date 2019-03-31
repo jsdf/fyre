@@ -104,4 +104,35 @@ export default class Vec2d {
   equals(other: Vec2dInit): boolean {
     return this.x === other.x && this.y === other.y;
   }
+
+  static memoizedOneArgDeriver(
+    getInput: () => Vec2d,
+    derive: (input: Vec2d, result: Vec2d) => void
+  ): () => Vec2d {
+    const cacheKey: Vec2d = new Vec2d();
+    let cached: ?Vec2d = null;
+
+    return () => {
+      const input = getInput();
+      if (cached != null && cacheKey.equals(input)) {
+        return cached;
+      } else {
+        cacheKey.copyFrom(input);
+        cached = new Vec2d();
+        derive(input, cached);
+        return cached;
+      }
+    };
+  }
+
+  static memoizedZeroArgDeriver(derive: () => Vec2d) {
+    let result: ?Vec2d = null;
+
+    return () => {
+      if (result == null) {
+        result = derive();
+      }
+      return result;
+    };
+  }
 }
