@@ -2674,35 +2674,41 @@ function renderFrame(canvas, ctx, game, editorModeState) {
 }
 
 const Hud = (props: {game: Game}) => {
-  if (props.game.screen === 'title') return null;
-  const {target} = props.game.player;
+  const {game} = props;
+  if (game.screen === 'title') return null;
+  const {target} = game.player;
+  const tents = typeFilter(game.worldObjects, Tent);
+  const tentsUsable = tents.filter(tent => tent.isUsable()).length;
+  const tentsOwned = tents.filter(
+    tent => game.tentGroups.get(tent.id) === 'blue'
+  ).length;
   return (
     <div style={{position: 'absolute', top: 0, left: 0}}>
       <div>
         <div className="statbarlabel">Piss: </div>
         <div
           className="statbar"
-          style={{background: '#ff4', width: props.game.player.piss * 10}}
+          style={{background: '#ff4', width: game.player.piss * 10}}
         />
       </div>
       <div>
         <div className="statbarlabel">Energy: </div>
         <div
           className="statbar"
-          style={{background: '#f44', width: props.game.player.energy * 10}}
+          style={{background: '#f44', width: game.player.energy * 10}}
         />
       </div>
       <div>
         <div className="statbarlabel">Score: </div>
-        {props.game.player.score}
+        {game.player.score}
       </div>
       <div>
-        <div className="statbarlabel">Tents: </div>
-        {
-          typeFilter(props.game.worldObjects, Tent).filter(tent =>
-            tent.isUsable()
-          ).length
-        }
+        <div className="statbarlabel">Tents remaining: </div>
+        {tentsUsable - tentsOwned}
+      </div>
+      <div>
+        <div className="statbarlabel">Tents owned: </div>
+        {tentsOwned}
       </div>
       <pre>
         version: {VERSION}
@@ -2710,16 +2716,16 @@ const Hud = (props: {game: Game}) => {
           JSON.stringify(
             {
               player: {
-                state: props.game.player.state.toString(),
-                pos: props.game.player.pos,
-                gridPos: props.game.grid.toGridCoords(props.game.player.pos),
-                walkability: props.game.grid.getGridTile(
-                  props.game.grid.toGridCoords(props.game.player.getCenter())
+                state: game.player.state.toString(),
+                pos: game.player.pos,
+                gridPos: game.grid.toGridCoords(game.player.pos),
+                walkability: game.grid.getGridTile(
+                  game.grid.toGridCoords(game.player.getCenter())
                 ),
               },
               target: target && {
                 id: target.id,
-                distanceTo: props.game.player
+                distanceTo: game.player
                   .getCenter()
                   .distanceTo(target.getCenter())
                   .toFixed(2),
@@ -2733,7 +2739,7 @@ const Hud = (props: {game: Game}) => {
         {DEBUG_WORLD_STATE &&
           JSON.stringify(
             {
-              worldObjects: props.game.worldObjects.length,
+              worldObjects: game.worldObjects.length,
             },
             null,
             2
