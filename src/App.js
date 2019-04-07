@@ -346,10 +346,13 @@ class Tent extends GameObject {
   bboxStart = new Vec2d({x: 6, y: 16});
   bboxEnd = new Vec2d({x: 40, y: 33});
   lastPissedOnStart = 0;
+  lastDryingStart = 0;
   particleSystem = new ParticleSystem();
   static MAX_DAMAGE = 1;
   static MAX_PISSINESS = 3;
+  static UNUSUABLE_PISSINESS = 1;
   static PISS_TIME = 300;
+  static DRYING_TIME = 3000;
 
   update(game: Game) {
     if (this.intersectingPissArea) {
@@ -357,7 +360,7 @@ class Tent extends GameObject {
 
       // update from freely pissing piss area
       if (
-        this.isUsable() &&
+        this.canPissOn() &&
         Date.now() > this.lastPissedOnStart + Tent.PISS_TIME
       ) {
         this.pissOn();
@@ -367,18 +370,37 @@ class Tent extends GameObject {
         }
 
         this.lastPissedOnStart = Date.now();
+        this.lastDryingStart = this.lastPissedOnStart;
       }
     }
+
+    if (
+      this.pissiness > 0 &&
+      this.pissiness < Tent.MAX_PISSINESS &&
+      Date.now() > this.lastDryingStart + Tent.DRYING_TIME
+    ) {
+      this.pissiness--;
+      this.lastDryingStart = Date.now();
+    }
+
     this.particleSystem.update();
   }
 
-  doDamage() {
-    if (this.damageTaken < Tent.MAX_DAMAGE) {
-      this.damageTaken++;
-      if (this.damageTaken === Tent.MAX_DAMAGE) {
-        this.sprite = assets.dstentdmg;
-      }
-    }
+  isRuinedByPlayer() {
+    return (
+      this.pissiness >= Tent.MAX_PISSINESS ||
+      this.damageTaken >= Tent.MAX_DAMAGE
+    );
+  }
+
+  isUsable() {
+    return (
+      this.enabled &&
+      this.pissiness < Tent.UNUSUABLE_PISSINESS &&
+      !this.isRuinedByPlayer() &&
+      !this.occupied &&
+      !this.captured
+    );
   }
 
   canDamage() {
@@ -389,10 +411,22 @@ class Tent extends GameObject {
   }
 
   canPissOn() {
-    if (this.pissiness < Tent.MAX_PISSINESS) {
-      return true;
+    return (
+      this.enabled &&
+      this.pissiness < Tent.MAX_PISSINESS &&
+      !this.isRuinedByPlayer() &&
+      !this.occupied &&
+      !this.captured
+    );
+  }
+
+  doDamage() {
+    if (this.damageTaken < Tent.MAX_DAMAGE) {
+      this.damageTaken++;
+      if (this.damageTaken === Tent.MAX_DAMAGE) {
+        this.sprite = assets.dstentdmg;
+      }
     }
-    return false;
   }
 
   pissOn() {
@@ -414,17 +448,6 @@ class Tent extends GameObject {
         );
       }
     }
-  }
-
-  isRuinedByPlayer() {
-    return (
-      this.pissiness >= Tent.MAX_PISSINESS ||
-      this.damageTaken >= Tent.MAX_DAMAGE
-    );
-  }
-
-  isUsable() {
-    return !this.isRuinedByPlayer() && !this.occupied && !this.captured;
   }
 
   capture() {
@@ -501,7 +524,8 @@ class Water extends Powerup {
 
   pickedUp(player: Player) {
     super.pickedUp(player);
-    player.piss = Math.min(player.piss + Water.VALUE, Player.MAX_PISS);
+    player.adjustPiss(Water.VALUE);
+    this.enabled = false;
   }
 }
 
@@ -1067,7 +1091,13 @@ class Player extends FestivalGoer {
     );
   }
 
+  adjustPiss(adjustment: number) {
+    this.piss = Math.min(this.piss + adjustment, Player.MAX_PISS);
+  }
+
   update(game: Game) {
+    this.adjustPiss(0.005);
+
     let move = new Vec2d();
 
     if (this.state instanceof TargetSeekingState) {
@@ -2199,10 +2229,20 @@ function renderTent(
         tent.pos.clone().add({x: -8, y: 0}),
         assets.pissed
       );
+    } else if (tent.pissiness >= Tent.UNUSUABLE_PISSINESS) {
+      renderLabel(
+        ctx,
+        view,
+        tent,
+        String(Math.floor((tent.pissiness / Tent.MAX_PISSINESS) * 100)) + '%',
+        'blue',
+        5
+      );
     } else if (tent.captured) {
       // renderLabel(ctx, view, tent, 'owned', 'blue', -5);
       renderImage(ctx, view, tent.pos.clone().add({x: -8, y: 0}), assets.owned);
-    } else {
+    }
+    if (tent.pissiness < Tent.MAX_PISSINESS) {
       // render particles
       for (var i = 0; i < tent.particleSystem.particles.length; i++) {
         const particle = tent.particleSystem.particles[i];
