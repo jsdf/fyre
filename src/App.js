@@ -9,7 +9,11 @@ import objectsDataUntyped from './objects.json';
 import gridData from './grid.json';
 import type {Vec2dInit} from './Vec2d';
 
-type GameObjectInit = {type: string, pos: {x: number, y: number}};
+type GameObjectInit = {
+  type: string,
+  pos: {x: number, y: number},
+  enabled?: boolean,
+};
 
 const objectsData: Array<GameObjectInit> = objectsDataUntyped;
 
@@ -244,6 +248,7 @@ class GameObject {
     return {
       type: this.constructor.name,
       pos: this.pos.toJSON(),
+      enabled: this.enabled,
     };
   }
 
@@ -1563,13 +1568,13 @@ class Game {
   spawnObjectOfType(obj: GameObjectInit): GameObject {
     switch (obj.type) {
       case 'Tent':
-        return this._spawnGeneric(obj.pos, Tent);
+        return this._spawnGeneric(obj, Tent);
       case 'Bus':
-        return this._spawnGeneric(obj.pos, Bus);
+        return this._spawnGeneric(obj, Bus);
       case 'CheeseSandwich':
-        return this._spawnGeneric(obj.pos, CheeseSandwich);
+        return this._spawnGeneric(obj, CheeseSandwich);
       case 'Water':
-        return this._spawnGeneric(obj.pos, Water);
+        return this._spawnGeneric(obj, Water);
       default:
         throw new Error(`unknown object type ${obj.type}`);
     }
@@ -1585,8 +1590,9 @@ class Game {
     });
   }
 
-  _spawnGeneric(pos: Vec2dInit, ObjectClass: Class<GameObject>) {
-    const obj = new ObjectClass(pos);
+  _spawnGeneric(objInit: GameObjectInit, ObjectClass: Class<GameObject>) {
+    const obj = new ObjectClass(objInit.pos);
+    obj.enabled = objInit.enabled != null ? objInit.enabled : true;
     this.addWorldObject(obj);
     return obj;
   }
@@ -2723,7 +2729,7 @@ type EditorModeState =
   | {|mode: 'grid', paint: Walkability, brushSize: number|}
   | {|
       mode: 'objects',
-      submode: 'add' | 'delete',
+      submode: 'add' | 'delete' | 'toggleEnabled',
       type: Class<GameObject>,
       history: Array<EditorObjectsModeCommand>,
     |}
@@ -2784,6 +2790,29 @@ class Editor extends React.Component<
               description: `delete ${obj.constructor.name} ${obj.id}`,
               undo: () => {
                 game.addWorldObject(obj);
+              },
+            }),
+          });
+        }
+
+        return;
+      }
+      case 'toggleEnabled': {
+        const searchArea = {x: 1, y: 1};
+        const obj = new RangeQuery(pos, searchArea).first(game.worldObjects);
+
+        if (obj) {
+          const prevEnabled = obj.enabled;
+          obj.enabled = !obj.enabled;
+
+          this.updateModeState({
+            ...state,
+            history: state.history.concat({
+              description: `${obj.enabled ? 'enable' : 'disable'} ${
+                obj.constructor.name
+              } ${obj.id}`,
+              undo: () => {
+                obj.enabled = prevEnabled;
               },
             }),
           });
@@ -2885,7 +2914,7 @@ class Editor extends React.Component<
     if (state.mode !== 'objects') return;
     this.updateModeState({
       ...state,
-      submode: Editor.cycle(['add', 'delete'], state.submode),
+      submode: Editor.cycle(['add', 'delete', 'toggleEnabled'], state.submode),
     });
   };
   _handleObjectUndo = () => {
