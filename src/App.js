@@ -539,6 +539,7 @@ class Tequila extends Powerup {
 
   pickedUp(player: Player) {
     super.pickedUp(player);
+    player.drinkTequila();
     this.enabled = false;
   }
 }
@@ -1252,6 +1253,8 @@ class Player extends FestivalGoer {
       this.transitionTo(new SmashingState(tent), game);
     }
   }
+
+  drinkTequila() {}
 
   doPissOnTent(tent: Tent, game: Game) {
     if (this.piss && tent.canPissOn()) {
