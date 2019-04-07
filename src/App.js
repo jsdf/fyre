@@ -661,7 +661,7 @@ class FestivalGoer extends GameObject {
     this.state.enter(game);
   }
 
-  clearTarget() {
+  clearTarget(game: Game) {
     this.target = null;
     this.pathfindingTargetPos = null;
     this.path = null;
@@ -669,7 +669,7 @@ class FestivalGoer extends GameObject {
 
   findNearestWalkableTile(
     game: Game,
-    target: {x: number, y: number},
+    target: {x: number, y: number}, // grid coords
     searchRadius: number
   ) {
     const {tileGrid} = game.grid;
@@ -800,6 +800,13 @@ class TargetSeekingState extends CharacterState {
     this.character = character;
   }
 
+  update(game: Game) {
+    const target = this.character.target;
+    if (target && !target.isUsable()) {
+      this.character.clearTarget(game);
+    }
+  }
+
   updateMove(character: FestivalGoer, game: Game, move: Vec2d) {
     const path = character.path;
     const {pathfindingTargetPos} = character;
@@ -848,7 +855,7 @@ class AIFestivalGoer extends FestivalGoer {
   enterTent(tent: Tent, game: Game) {
     if (!tent.isUsable()) {
       // give up on this one, find another
-      this.clearTarget();
+      this.clearTarget(game);
     } else {
       this.enabled = false;
       tent.occupy();
@@ -860,17 +867,43 @@ class AIFestivalGoer extends FestivalGoer {
   }
 
   runFromPiss(game: Game) {
-    this.clearTarget();
+    this.clearTarget(game);
     this.transitionTo(new FleeingState(), game);
   }
 
+  clearTarget(game: Game) {
+    super.clearTarget(game);
+    this.transitionTo(new IdleState(), game);
+  }
+
   tryAcquireTarget(game: Game) {
-    const tents = typeFilter(game.worldObjects, Tent);
+    const alreadyTargeted = new Set(
+      typeFilter(game.worldObjects, AIFestivalGoer)
+        .map(festivalgoer => festivalgoer.target)
+        .filter(Boolean)
+    );
 
-    const candidate = tents[Math.floor(Math.random() * tents.length)];
+    const untargetedTents = typeFilter(game.worldObjects, Tent).filter(
+      tent => !alreadyTargeted.has(tent) && tent.isUsable()
+    );
 
-    if (candidate && candidate.isUsable()) {
+    let candidate = untargetedTents[0];
+    // find closest
+    if (candidate != null)
+      candidate = untargetedTents.reduce((min, tent) => {
+        if (
+          tent.getCenter().distanceTo(this.getCenter()) <
+          min.getCenter().distanceTo(this.getCenter())
+        ) {
+          return tent;
+        }
+        return min;
+      }, candidate);
+
+    if (candidate) {
       this.target = candidate;
+    } else {
+      errorOnce(`${this.id} unable to acquire target`);
     }
   }
 
@@ -1105,7 +1138,7 @@ class Player extends FestivalGoer {
       if (pathfindingTargetPos) {
         if (this.getCenter().distanceTo(pathfindingTargetPos) < 1) {
           // at destination
-          this.clearTarget();
+          this.clearTarget(game);
           this.transitionTo(new IdleState(), game);
         }
       }
@@ -1673,16 +1706,21 @@ class Game {
   }
 
   _spawnPerson() {
-    const pos = Player.START_POS.clone().add({
-      x: Math.floor(Math.random() * 300) - 200,
-      y: 0,
-    });
+    const pos = typeFilter(this.worldObjects, Bus)[0]
+      .getCenter()
+      .clone()
+      .add({
+        x: 20,
+        y: -6,
+      });
 
     this.addWorldObject(new AIFestivalGoer(pos));
   }
 
   _startSpawningPeople() {
-    this._spawnPeopleLoop(76);
+    this._spawnPeopleLoop(
+      typeFilter(this.worldObjects, Tent).filter(tent => tent.isUsable()).length
+    );
   }
 
   _spawnPeopleLoop = remaining => {
@@ -1965,6 +2003,44 @@ function renderFestivalGoerImage(
   }
 
   const {target} = person;
+  if (target) {
+    const obj = person;
+    const {path} = obj;
+    ctx.strokeStyle = 'grey';
+    ctx.setLineDash([4, 8]);
+    if (path) {
+      let lastPoint = obj.getCenter();
+      for (
+        let i = path.nextPointIsDestination()
+          ? path.points.length
+          : path.nextPointIndex;
+        i <= path.points.length;
+        i++
+      ) {
+        const dest =
+          i === path.points.length ? target.getCenter() : path.points[i];
+
+        const from = lastPoint;
+        const to = dest;
+
+        ctx.beginPath();
+
+        ctx.moveTo(
+          Math.floor(view.toScreenX(from.x)) + 0.5,
+          Math.floor(view.toScreenY(from.y)) + 0.5
+        );
+
+        ctx.lineTo(
+          Math.floor(view.toScreenX(to.x)) + 0.5,
+          Math.floor(view.toScreenY(to.y)) + 0.5
+        );
+        ctx.stroke();
+
+        lastPoint = path.points[i];
+      }
+    }
+    ctx.setLineDash([]);
+  }
 
   if (DEBUG_AI_TARGETS && target) {
     ctx.font = '10px monospace';
