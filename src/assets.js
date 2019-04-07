@@ -16,6 +16,7 @@ export default {
   dstentdmg: require('./assets/dstentdmg.png'),
   cheese: require('./assets/cheese.png'),
   water: require('./assets/water2.png'),
+  tequila: require('./assets/tequila.png'),
   guystill: require('./assets/guystill.png'),
   guywalkcycle1: require('./assets/guywalkcycle1.png'),
   guywalkcycle2: require('./assets/guywalkcycle2.png'),

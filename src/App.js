@@ -490,6 +490,19 @@ class Water extends Powerup {
   pickedUp(player: Player) {
     super.pickedUp(player);
     player.piss = Math.min(player.piss + Water.VALUE, Player.MAX_PISS);
+  }
+}
+
+class Tequila extends Powerup {
+  sprite = assets.tequila;
+  sound = sounds.pickup1;
+  bboxStart = new Vec2d({x: 22, y: 8});
+  bboxEnd = new Vec2d({x: 40, y: 50});
+  respawnTime = 60000;
+  static VALUE = 3;
+
+  pickedUp(player: Player) {
+    super.pickedUp(player);
     this.enabled = false;
   }
 }
