@@ -17,8 +17,8 @@ type GameObjectInit = {
 
 const objectsData: Array<GameObjectInit> = objectsDataUntyped;
 
-const DEV_MODE = true;
-const PROD_OPTIMIZE = !DEV_MODE;
+const DEV_MODE = false;
+const PROD_OPTIMIZE = false;
 const MAX_OBJECT_SIZE = 96;
 const GRID_SUBDIV = 5;
 const GRID_ROWS = 17 * GRID_SUBDIV;
@@ -41,8 +41,8 @@ const DEBUG_DISABLE_PEOPLE = false;
 const DEBUG_TENT_GROUPS = false;
 const DARK = false;
 const DRAW_HUD = true;
-const ENABLE_MUSIC = true;
-const SOUND_VOLUME = 0.5;
+const ENABLE_MUSIC = !DEV_MODE;
+const SOUND_VOLUME = DEV_MODE ? 0 : 0.5;
 const TENT_ADJACENCY_RADIUS = 100;
 const PERF_FRAMETIME = false;
 const PERF_PATHFINDING = false;
