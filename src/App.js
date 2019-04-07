@@ -49,6 +49,13 @@ const MOUSE_GO_MIN_DIST = 50;
 const GRID_START = new Vec2d({x: 20, y: 20});
 const BG_OFFSET = new Vec2d({x: -400, y: -200});
 
+const VERSION =
+  Array.from(document.querySelectorAll('script'))
+    .find(s => s.src.includes('main'))
+    .src.replace(/.*main/, '')
+    .replace(/.chunk.js/, '')
+    .replace('.', '') || 'dev';
+
 function range(size: number) {
   return Array(size)
     .fill(0)
@@ -2652,6 +2659,7 @@ const Hud = (props: {game: Game}) => {
         }
       </div>
       <pre>
+        version: {VERSION}
         {DEBUG_PLAYER_STATE &&
           JSON.stringify(
             {
