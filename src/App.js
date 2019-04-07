@@ -2134,6 +2134,20 @@ function renderPissStream(
   }
 }
 
+function renderLine(
+  ctx: CanvasRenderingContext2D,
+  view: View,
+  from: Vec2d,
+  to: Vec2d,
+  color: string
+) {
+  ctx.strokeStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(view.toScreenX(from.x), view.toScreenY(from.y));
+  ctx.lineTo(view.toScreenX(to.x), view.toScreenY(to.y));
+  ctx.stroke();
+}
+
 function renderDebugLine(
   ctx: CanvasRenderingContext2D,
   view: View,
@@ -2298,7 +2312,6 @@ function renderTent(
         assets.occupied
       );
     } else if (tent.pissiness >= Tent.MAX_PISSINESS) {
-      // renderLabel(ctx, view, tent, 'pissy', 'blue', -5);
       renderImage(
         ctx,
         view,
@@ -2686,6 +2699,29 @@ function renderFrame(canvas, ctx, game, editorModeState) {
         const color = game.tentGroups.get(obj.id);
         if (color != null) {
           renderPoint(ctx, game.view, obj.getCenter(), color);
+        }
+      }
+
+      if (game.tentGroups.get(obj.id) === 'blue') {
+        const adjacencies = game.tentAdjacencies.get(obj.id);
+        if (adjacencies) {
+          let prev =
+            last(adjacencies) != null
+              ? game.worldObjectsByID.get(last(adjacencies))
+              : null;
+          for (let i = 0; i < adjacencies.length; i++) {
+            const adjacent = game.worldObjectsByID.get(adjacencies[i]);
+            if (adjacent && prev) {
+              renderLine(
+                ctx,
+                game.view,
+                prev.getCenter(),
+                adjacent.getCenter(),
+                'blue'
+              );
+            }
+            prev = adjacent;
+          }
         }
       }
 
