@@ -884,22 +884,31 @@ class AIFestivalGoer extends FestivalGoer {
         .filter(Boolean)
     );
 
-    const untargetedTents = typeFilter(game.worldObjects, Tent).filter(
-      tent => !alreadyTargeted.has(tent) && tent.isUsable()
+    const usableTents = typeFilter(game.worldObjects, Tent).filter(tent =>
+      tent.isUsable()
+    );
+    const untargetedUsableTents = usableTents.filter(
+      tent => !alreadyTargeted.has(tent)
     );
 
-    let candidate = untargetedTents[0];
-    // find closest
-    if (candidate != null)
-      candidate = untargetedTents.reduce((min, tent) => {
-        if (
-          tent.getCenter().distanceTo(this.getCenter()) <
-          min.getCenter().distanceTo(this.getCenter())
-        ) {
-          return tent;
-        }
-        return min;
-      }, candidate);
+    function closest(tents: Array<Tent>, character: FestivalGoer): ?Tent {
+      let current = tents[0];
+      // find closest
+      if (current != null)
+        current = tents.reduce((min, tent) => {
+          if (
+            tent.getCenter().distanceTo(character.getCenter()) <
+            min.getCenter().distanceTo(character.getCenter())
+          ) {
+            return tent;
+          }
+          return min;
+        }, current);
+      return current;
+    }
+
+    const candidate =
+      closest(untargetedUsableTents, this) || closest(usableTents, this);
 
     if (candidate) {
       this.target = candidate;
@@ -2819,7 +2828,7 @@ const Hud = (props: {game: Game}) => {
       </div>
       <div>
         <div className="statbarlabel">Tents remaining: </div>
-        {tentsUsable - tentsOwned}
+        {tentsUsable}
       </div>
       <div>
         <div className="statbarlabel">Tents owned: </div>
