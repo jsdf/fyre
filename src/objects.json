@@ -4,559 +4,639 @@
     "pos": {
       "x": 197,
       "y": 198
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 209,
       "y": 115
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 297,
       "y": 122
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 288,
       "y": 209
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 391,
       "y": 118
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 379,
       "y": 207
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 481,
       "y": 124
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 472,
       "y": 208
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 568,
       "y": 126
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 561,
       "y": 210
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 299,
       "y": 50
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 393,
       "y": 48
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 187,
       "y": 281
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 280,
       "y": 289
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 375,
       "y": 289
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 467,
       "y": 282
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 562,
       "y": 277
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 563,
       "y": 362
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 468,
       "y": 361
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 376,
       "y": 374
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 285,
       "y": 373
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 188,
       "y": 364
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 470,
       "y": 441
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 380,
       "y": 448
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 289,
       "y": 461
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 197,
       "y": 446
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 94,
       "y": 280
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 95,
       "y": 369
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 103,
       "y": 457
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 414,
       "y": 604
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 341,
       "y": 696
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 435,
       "y": 688
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 504,
       "y": 593
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 526,
       "y": 664
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 446,
       "y": 773
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 533,
       "y": 754
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 619,
       "y": 656
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 624,
       "y": 741
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 712,
       "y": 738
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 701,
       "y": 650
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 698,
       "y": 563
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 794,
       "y": 645
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 795,
       "y": 724
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 885,
       "y": 710
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 885,
       "y": 640
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 791,
       "y": 564
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 877,
       "y": 561
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 964,
       "y": 551
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 972,
       "y": 635
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 975,
       "y": 700
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 1069,
       "y": 700
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 1049,
       "y": 624
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 1051,
       "y": 786
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 981,
       "y": 775
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 900,
       "y": 797
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 812,
       "y": 813
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 717,
       "y": 804
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 629,
       "y": 810
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 809,
       "y": 872
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 719,
       "y": 869
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 900,
       "y": 888
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 978,
       "y": 868
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 629,
       "y": 880
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 721,
       "y": 946
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 796,
       "y": 944
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 550,
       "y": 838
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 457,
       "y": 846
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 547,
       "y": 924
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 456,
       "y": 912
-    }
+    },
+    "enabled": true
   },
   {
     "type": "CheeseSandwich",
     "pos": {
       "x": 639.5,
-      "y": 960.4088693259697
-    }
+      "y": 964.4213840235745
+    },
+    "enabled": true
   },
   {
     "type": "Water",
     "pos": {
       "x": 829.5,
-      "y": 683.3705842026217
-    }
+      "y": 700.21378513706
+    },
+    "enabled": true
   },
   {
     "type": "Water",
     "pos": {
       "x": 571.5,
-      "y": 147.87367235744503
-    }
+      "y": 162.06199826599456
+    },
+    "enabled": true
   },
   {
     "type": "CheeseSandwich",
     "pos": {
       "x": 134.5,
-      "y": 343.4176009018052
-    }
+      "y": 341.90637037696246
+    },
+    "enabled": true
   },
   {
     "type": "Bus",
     "pos": {
       "x": 55,
       "y": 710.5
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 351,
       "y": 770.5
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 362,
       "y": 857.5
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 370,
       "y": 948.5
-    }
+    },
+    "enabled": true
   },
   {
     "type": "Tent",
     "pos": {
       "x": 4,
       "y": 277.5
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 6,
       "y": 352.5
-    }
+    },
+    "enabled": false
   },
   {
     "type": "Tent",
     "pos": {
       "x": 13,
       "y": 441.5
-    }
+    },
+    "enabled": false
   }
 ]
