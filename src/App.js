@@ -1593,6 +1593,13 @@ class TitleScreen {
 }
 
 class Game {
+  static SPAWNABLE_OBJECT_CLASSES = {
+    Tent: Tent,
+    Bus: Bus,
+    CheeseSandwich: CheeseSandwich,
+    Water: Water,
+    Tequila: Tequila,
+  };
   frame = 0;
   player = new Player();
   screen: Screen = 'title';
@@ -1645,18 +1652,12 @@ class Game {
   }
 
   spawnObjectOfType(obj: GameObjectInit): GameObject {
-    switch (obj.type) {
-      case 'Tent':
-        return this._spawnGeneric(obj, Tent);
-      case 'Bus':
-        return this._spawnGeneric(obj, Bus);
-      case 'CheeseSandwich':
-        return this._spawnGeneric(obj, CheeseSandwich);
-      case 'Water':
-        return this._spawnGeneric(obj, Water);
-      default:
-        throw new Error(`unknown object type ${obj.type}`);
+    const ObjectClass = Game.SPAWNABLE_OBJECT_CLASSES[obj.type];
+    if (ObjectClass) {
+      return this._spawnGeneric(obj, ObjectClass);
     }
+
+    throw new Error(`unknown object type ${obj.type}`);
   }
 
   _spawnObjects() {
@@ -1680,14 +1681,10 @@ class Game {
     return JSON.stringify(
       this.worldObjects
         .map(obj => {
-          switch (obj.constructor.name) {
-            case 'Tent':
-            case 'Bus':
-            case 'CheeseSandwich':
-            case 'Water':
-              return obj.toJSON();
-            default:
-              return null;
+          if (obj.constructor.name in Game.SPAWNABLE_OBJECT_CLASSES) {
+            return obj.toJSON();
+          } else {
+            return null;
           }
         })
         .filter(Boolean),
@@ -3068,7 +3065,10 @@ class Editor extends React.Component<
     if (state.mode !== 'objects') return;
     this.updateModeState({
       ...state,
-      type: Editor.cycle([Tent, CheeseSandwich, Water, Bus], state.type),
+      type: Editor.cycle(
+        [Tent, CheeseSandwich, Water, Bus, Tequila],
+        state.type
+      ),
     });
   };
   _handlePaintChange = () => {
