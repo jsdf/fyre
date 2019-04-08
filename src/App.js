@@ -39,7 +39,7 @@ const DEBUG_PATH_FOLLOWING_STUCK = true;
 const DEBUG_AJACENCY = false;
 const DEBUG_DISABLE_PEOPLE = false;
 const DEBUG_TENT_GROUPS = false;
-const DARK = false;
+const DARK = true;
 const DRAW_HUD = true;
 const ENABLE_MUSIC = !DEV_MODE;
 const SOUND_VOLUME = DEV_MODE ? 0 : 0.5;
@@ -281,6 +281,10 @@ function linear(n: number): number {
 
 function outCube(n: number): number {
   return --n * n * n + 1;
+}
+
+function inCube(n: number): number {
+  return n * n * n;
 }
 
 class Particle {
@@ -2662,9 +2666,13 @@ function renderFrame(canvas, ctx, game, editorModeState) {
   const {target} = game.player;
 
   if (DARK) {
+    const tents = typeFilter(game.worldObjects, Tent);
+    const tentsUsable = tents.filter(tent => tent.isUsable()).length;
     // render tint
     ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = '#aac2eb';
+    ctx.fillStyle = `rgba(170,194,235,${inCube(
+      1 - tentsUsable / tents.length
+    )})`;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.globalCompositeOperation = 'source-over';
   }
