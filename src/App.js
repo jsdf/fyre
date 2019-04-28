@@ -53,9 +53,20 @@ const MOUSE_GO_MIN_DIST = 50;
 const GRID_START = new Vec2d({x: 20, y: 20});
 const BG_OFFSET = new Vec2d({x: -400, y: -200});
 
+function nullthrows<T>(v: ?T): T {
+  if (v != null) {
+    return v;
+  } else {
+    throw new Error('unexpected null');
+  }
+}
+
 const VERSION =
-  Array.from(document.querySelectorAll('script'))
-    .find(s => s.src.includes('main'))
+  nullthrows(
+    Array.from(document.querySelectorAll('script')).find(
+      s => s && s.src.includes('main')
+    )
+  )
     .src.replace(/.*main/, '')
     .replace(/.chunk.js/, '')
     .replace('.', '') || 'dev';
