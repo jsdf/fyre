@@ -2,7 +2,7 @@
   "name": "fyre",
   "version": "0.1.0",
   "private": true,
-  "homepage" : "https://jamesfriend.com.au/projects/fyre",
+  "homepage": "https://jamesfriend.com.au/projects/fyre",
   "dependencies": {
     "easystarjs": "^0.4.3",
     "react": "^16.7.0",
@@ -26,8 +26,8 @@
     "not op_mini all"
   ],
   "devDependencies": {
-    "flow-bin": "^0.93.0",
+    "flow-bin": "^0.98.0",
     "gm": "^1.23.1",
-    "prettier": "^1.16.4"
+    "prettier": "^1.17.0"
   }
 }
