@@ -90,6 +90,14 @@ export default class Vec2d {
     return this;
   }
 
+  angle() {
+    let angle = Math.atan2(this.y, this.x);
+
+    if (angle < 0) angle += 2 * Math.PI;
+
+    return angle;
+  }
+
   toJSON() {
     return {
       x: this.x,

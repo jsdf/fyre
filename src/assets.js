@@ -35,4 +35,8 @@ export default {
   smoke3: require('./assets/smoke3.png'),
   plus100: require('./assets/100.png'),
   owned: require('./assets/owned.png'),
+  bigpiss1: require('./assets/bigpiss1.png'),
+  bigpiss2: require('./assets/bigpiss2.png'),
+  bigpiss3: require('./assets/bigpiss3.png'),
+  bubble: require('./assets/bubble.png'),
 };

@@ -1,23 +1,23 @@
 // @flow
-import './App.css';
-import assets from './assets';
-import sounds from './sounds';
-import React, {Component} from 'react';
-import Vec2d from './Vec2d';
-import EasyStar from 'easystarjs';
-import objectsDataUntyped from './objects.json';
-import gridData from './grid.json';
-import type {Vec2dInit} from './Vec2d';
+import "./App.css";
+import assets from "./assets";
+import sounds from "./sounds";
+import React, { Component } from "react";
+import Vec2d from "./Vec2d";
+import EasyStar from "easystarjs";
+import objectsDataUntyped from "./objects.json";
+import gridData from "./grid.json";
+import type { Vec2dInit } from "./Vec2d";
 
 type GameObjectInit = {
   type: string,
-  pos: {x: number, y: number},
-  enabled?: boolean,
+  pos: { x: number, y: number },
+  enabled?: boolean
 };
 
 const objectsData: Array<GameObjectInit> = objectsDataUntyped;
 
-const DEV_MODE = false;
+const DEV_MODE = true;
 const PROD_OPTIMIZE = false;
 const MAX_OBJECT_SIZE = 96;
 const GRID_SUBDIV = 5;
@@ -27,7 +27,7 @@ const GRID_UNIT_WIDTH = 64 / GRID_SUBDIV;
 const GRID_UNIT_HEIGHT = 64 / GRID_SUBDIV;
 const SCALE = 3;
 const DEBUG_OBJECTS = false;
-const DEBUG_AI_TARGETS = false;
+const DEBUG_AI_TARGETS = true;
 const DEBUG_AI_STATE = false;
 const DEBUG_BBOX = false;
 const DEBUG_PLAYER_STATE = false;
@@ -41,8 +41,8 @@ const DEBUG_DISABLE_PEOPLE = false;
 const DEBUG_TENT_GROUPS = false;
 const DARK = true;
 const DRAW_HUD = true;
-const ENABLE_MUSIC = !DEV_MODE;
-const SOUND_VOLUME = DEV_MODE ? 0 : 0.5;
+const ENABLE_MUSIC = !false;
+const SOUND_VOLUME = false ? 0 : 0.5;
 const TENT_ADJACENCY_RADIUS = 100;
 const PERF_FRAMETIME = false;
 const PERF_PATHFINDING = false;
@@ -50,31 +50,33 @@ const MOUSE_CONTROL = true;
 const MOUSE_MOVEMENT = false;
 const MAX_CAPTURABLE_TENT_GROUP = 3;
 const MOUSE_GO_MIN_DIST = 50;
-const GRID_START = new Vec2d({x: 20, y: 20});
-const BG_OFFSET = new Vec2d({x: -400, y: -200});
+const GRID_START = new Vec2d({ x: 20, y: 20 });
+const BG_OFFSET = new Vec2d({ x: -400, y: -200 });
 
 function nullthrows<T>(v: ?T): T {
   if (v != null) {
     return v;
   } else {
-    throw new Error('unexpected null');
+    throw new Error("unexpected null");
   }
 }
 
 const VERSION =
   nullthrows(
-    Array.from(document.querySelectorAll('script')).find(
-      s => s && s.src.includes('main')
+    Array.from(document.querySelectorAll("script")).find(
+      s => s && s.src.includes("main")
     )
   )
-    .src.replace(/.*main/, '')
-    .replace(/.chunk.js/, '')
-    .replace('.', '') || 'dev';
+    .src.replace(/.*main/, "")
+    .replace(/.chunk.js/, "")
+    .replace(".", "") || "dev";
 
-function range(size: number) {
-  return Array(size)
-    .fill(0)
-    .map((_, i) => i);
+function range(size: number): Array<number> {
+  return new Array(size).fill(0).map((_, i) => i);
+}
+
+function degToRad(degrees) {
+  return (degrees * Math.PI) / 180;
 }
 
 const [WALKABLE, AI_UNWALKABLE, UNWALKABLE] = range(3);
@@ -107,19 +109,19 @@ const errorOnce = (() => {
   };
 })();
 
-type AssetURI = $Values<typeof assets> | '';
+type AssetURI = $Values<typeof assets> | "";
 
 const getImage = (() => {
   const cache = new Map();
   return (url: AssetURI) => {
-    if (url === '') {
+    if (url === "") {
       return;
     }
     const cached = cache.get(url);
     if (cached) {
       return cached.image;
     } else {
-      const imageRef: {image: ?Image} = {image: null};
+      const imageRef: { image: ?Image } = { image: null };
       const image = new Image();
       image.onload = () => {
         imageRef.image = image;
@@ -148,14 +150,14 @@ declare class Audio {
 const getSound = (() => {
   const cache = new Map();
   return (url: string) => {
-    if (url === '') {
+    if (url === "") {
       return;
     }
     const cached = cache.get(url);
     if (cached) {
       return cached.audio;
     } else {
-      const audioRef: {audio: ?Audio} = {audio: null};
+      const audioRef: { audio: ?Audio } = { audio: null };
       const audio = new Audio();
       audio.oncanplay = () => {
         audioRef.audio = audio;
@@ -174,11 +176,11 @@ function playSound(url: string) {
   const sound = getSound(url);
   if (sound) {
     sound.play().catch(err => {
-      errorOnce('sound not enabled ' + JSON.stringify(url));
+      errorOnce("sound not enabled " + JSON.stringify(url));
     });
     sound.volume = SOUND_VOLUME;
   } else {
-    errorOnce('sound not ready ' + JSON.stringify(url));
+    errorOnce("sound not ready " + JSON.stringify(url));
   }
 }
 
@@ -199,22 +201,22 @@ function frameCycle(
   ];
 }
 
-type Direction = 'up' | 'down' | 'left' | 'right';
-const DIRECTIONS: Array<Direction> = ['up', 'down', 'left', 'right'];
-type KeyStates = {['up' | 'down' | 'left' | 'right' | 'attack']: boolean};
+type Direction = "up" | "down" | "left" | "right";
+const DIRECTIONS: Array<Direction> = ["up", "down", "left", "right"];
+type KeyStates = { ["up" | "down" | "left" | "right" | "attack"]: boolean };
 
 const DIRECTIONS_VECTORS = {
-  up: new Vec2d({x: 0, y: -1}),
-  down: new Vec2d({x: 0, y: 1}),
-  left: new Vec2d({x: -1, y: 0}),
-  right: new Vec2d({x: 1, y: 0}),
+  up: new Vec2d({ x: 0, y: -1 }),
+  down: new Vec2d({ x: 0, y: 1 }),
+  left: new Vec2d({ x: -1, y: 0 }),
+  right: new Vec2d({ x: 1, y: 0 })
 };
 
 class GameObject {
   static maxId = 0;
   id = GameObject.maxId++;
   pos: Vec2d = new Vec2d();
-  sprite: AssetURI = '';
+  sprite: AssetURI = "";
   bboxStart = new Vec2d(); // top left
   bboxEnd = new Vec2d(); // bottom right
 
@@ -259,7 +261,7 @@ class GameObject {
     return {
       type: this.constructor.name,
       pos: this.pos.toJSON(),
-      enabled: this.enabled,
+      enabled: this.enabled
     };
   }
 
@@ -321,6 +323,14 @@ class Particle {
     this.ease = ease;
     this.pos = startPos.clone();
   }
+
+  update(now: number): boolean {
+    const progress = this.ease((now - this.startTime) / this.duration);
+
+    this.pos.lerp(this.startPos, this.endPos, progress);
+
+    return progress > 1;
+  }
 }
 
 class ParticleSystem {
@@ -330,17 +340,10 @@ class ParticleSystem {
     const now = Date.now();
     for (let i = 0; i < this.particles.length; i++) {
       const particle = this.particles[i];
-      const progress = particle.ease(
-        (now - particle.startTime) / particle.duration
-      );
-      if (progress > 1) {
+      const expired = particle.update(now);
+      if (expired) {
         anyExpired = true;
       }
-      particle.pos
-        .copyFrom(particle.endPos)
-        .sub(particle.startPos)
-        .multiplyScalar(progress)
-        .add(particle.startPos);
     }
     if (anyExpired) {
       this.particles = this.particles.filter(
@@ -358,8 +361,8 @@ class Tent extends GameObject {
   solid = true;
   sprite = assets.dstent;
   intersectingPissArea: ?PissArea = null;
-  bboxStart = new Vec2d({x: 6, y: 16});
-  bboxEnd = new Vec2d({x: 40, y: 33});
+  bboxStart = new Vec2d({ x: 6, y: 16 });
+  bboxEnd = new Vec2d({ x: 40, y: 33 });
   lastPissedOnStart = 0;
   lastDryingStart = 0;
   particleSystem = new ParticleSystem();
@@ -455,8 +458,8 @@ class Tent extends GameObject {
         const duration = 500;
         const startPos = this.getCenter()
           .clone()
-          .add({x: Math.random() * 10, y: Math.random() * 5});
-        const endPos = startPos.clone().add({x: 0, y: -10});
+          .add({ x: Math.random() * 10, y: Math.random() * 5 });
+        const endPos = startPos.clone().add({ x: 0, y: -10 });
         const ease = outCube;
         this.particleSystem.particles.push(
           new Particle(sprite, duration, startPos, endPos, ease)
@@ -514,7 +517,7 @@ class PickedUpPowerupState extends PowerupState {
 }
 
 class Powerup extends GameObject {
-  sound = '';
+  sound = "";
   respawnTime = 10000;
   state: PowerupState = new AvailablePowerupState();
   update(game: Game) {
@@ -525,7 +528,7 @@ class Powerup extends GameObject {
       this.state = nextState;
     }
   }
-  pickedUp(player: Player) {
+  pickedUp(player: Player, game: Game) {
     this.state = new PickedUpPowerupState();
   }
 }
@@ -533,12 +536,12 @@ class Powerup extends GameObject {
 class Water extends Powerup {
   sprite = assets.water;
   sound = sounds.pickup1;
-  bboxStart = new Vec2d({x: 19, y: 15});
-  bboxEnd = new Vec2d({x: 46, y: 43});
+  bboxStart = new Vec2d({ x: 19, y: 15 });
+  bboxEnd = new Vec2d({ x: 46, y: 43 });
   static VALUE = 3;
 
-  pickedUp(player: Player) {
-    super.pickedUp(player);
+  pickedUp(player: Player, game: Game) {
+    super.pickedUp(player, game);
     player.adjustPiss(Water.VALUE);
     this.enabled = false;
   }
@@ -547,14 +550,14 @@ class Water extends Powerup {
 class Tequila extends Powerup {
   sprite = assets.tequila;
   sound = sounds.pickup1;
-  bboxStart = new Vec2d({x: 22, y: 8});
-  bboxEnd = new Vec2d({x: 40, y: 50});
+  bboxStart = new Vec2d({ x: 22, y: 8 });
+  bboxEnd = new Vec2d({ x: 40, y: 50 });
   respawnTime = 60000;
   static VALUE = 3;
 
-  pickedUp(player: Player) {
-    super.pickedUp(player);
-    player.drinkTequila();
+  pickedUp(player: Player, game: Game) {
+    super.pickedUp(player, game);
+    player.drinkTequila(game);
     this.enabled = false;
   }
 }
@@ -563,11 +566,11 @@ class CheeseSandwich extends Powerup {
   sprite = assets.cheese;
 
   sound = sounds.pickup2;
-  bboxStart = new Vec2d({x: 20, y: 22});
-  bboxEnd = new Vec2d({x: 43, y: 44});
+  bboxStart = new Vec2d({ x: 20, y: 22 });
+  bboxEnd = new Vec2d({ x: 43, y: 44 });
   static VALUE = 3;
-  pickedUp(player: Player) {
-    super.pickedUp(player);
+  pickedUp(player: Player, game: Game) {
+    super.pickedUp(player, game);
     player.energy = Math.min(
       player.energy + CheeseSandwich.VALUE,
       Player.MAX_ENERGY
@@ -579,8 +582,8 @@ class CheeseSandwich extends Powerup {
 class Bus extends GameObject {
   solid = true;
   sprite = assets.bus;
-  bboxStart = new Vec2d({x: 16, y: 22});
-  bboxEnd = new Vec2d({x: 82, y: 53});
+  bboxStart = new Vec2d({ x: 16, y: 22 });
+  bboxEnd = new Vec2d({ x: 82, y: 53 });
 }
 
 function typeFilter<T>(objs: Array<GameObject>, Typeclass: Class<T>): Array<T> {
@@ -631,8 +634,8 @@ class CharacterState {
 class IdleState extends CharacterState {}
 
 class FestivalGoer extends GameObject {
-  bboxStart = new Vec2d({x: 13, y: 18});
-  bboxEnd = new Vec2d({x: 17, y: 23});
+  bboxStart = new Vec2d({ x: 13, y: 18 });
+  bboxEnd = new Vec2d({ x: 17, y: 23 });
   state: CharacterState = new IdleState();
   lastMove = new Vec2d();
   isMoving = false;
@@ -641,14 +644,14 @@ class FestivalGoer extends GameObject {
   pathfindingTargetPos: ?Vec2d = null;
   path: ?Path = null;
   stuck = false;
-  activeDialog: ?{text: string, startTime: number} = null;
+  activeDialog: ?{ text: string, startTime: number } = null;
 
   static MOVEMENT_SPEED = 1;
   stillSprite = assets.personstill;
   walkAnim = [
     assets.personwalkcycle1,
     assets.personwalkcycle2,
-    assets.personwalkcycle3,
+    assets.personwalkcycle3
   ];
   static FRAMES_PER_ANIM_FRAME = 3;
 
@@ -685,19 +688,19 @@ class FestivalGoer extends GameObject {
 
   findNearestWalkableTile(
     game: Game,
-    target: {x: number, y: number}, // grid coords
+    target: { x: number, y: number }, // grid coords
     searchRadius: number
   ) {
-    const {tileGrid} = game.grid;
+    const { tileGrid } = game.grid;
     if (tileGrid == null) {
-      console.error('tileGrid not initialized');
+      console.error("tileGrid not initialized");
       return;
     }
     // find nearest walkable tile
     const candidates = [];
     for (let rowRel = -1 * searchRadius; rowRel < searchRadius; rowRel++) {
       for (let colRel = -1 * searchRadius; colRel < searchRadius; colRel++) {
-        const gridPos = {x: target.x + colRel, y: target.y + rowRel};
+        const gridPos = { x: target.x + colRel, y: target.y + rowRel };
         const worldPos = game.grid.tileCenterFromGridCoords(gridPos);
         const gridPosClamped = game.grid.toGridCoords(worldPos);
         candidates.push({
@@ -705,7 +708,7 @@ class FestivalGoer extends GameObject {
           distance: this.getCenter().distanceTo(
             game.grid.tileCenterFromGridCoords(gridPos)
           ),
-          walkable: tileGrid[gridPosClamped.y][gridPosClamped.x] === WALKABLE,
+          walkable: tileGrid[gridPosClamped.y][gridPosClamped.x] === WALKABLE
         });
       }
     }
@@ -725,9 +728,9 @@ class FestivalGoer extends GameObject {
     let start = game.grid.toGridCoords(this.getCenter());
     let end = game.grid.toGridCoords(targetPos);
 
-    const {tileGrid} = game.grid;
+    const { tileGrid } = game.grid;
     if (tileGrid == null) {
-      console.error('tileGrid not initialized');
+      console.error("tileGrid not initialized");
       return;
     }
 
@@ -751,21 +754,21 @@ class FestivalGoer extends GameObject {
     }
 
     if (tileGrid[start.y][start.x] !== WALKABLE) {
-      console.error('pathfinding: start is unwalkable');
+      console.error("pathfinding: start is unwalkable");
       return;
     }
     if (tileGrid[end.y][end.x] !== WALKABLE) {
-      console.error('pathfinding: end is unwalkable');
+      console.error("pathfinding: end is unwalkable");
       return;
     }
     let startTime = performance.now();
     try {
       game.grid.easystar.findPath(start.x, start.y, end.x, end.y, gridPath => {
         if (gridPath === null) {
-          console.error('pathfinding failed', this, {start, end});
+          console.error("pathfinding failed", this, { start, end });
         } else {
           if (gridPath.length === 0) {
-            console.error('pathfinding failed: empty', this, {start, end});
+            console.error("pathfinding failed: empty", this, { start, end });
           } else {
             this.path = new Path(
               gridPath.length === 0
@@ -778,17 +781,17 @@ class FestivalGoer extends GameObject {
 
             PERF_PATHFINDING &&
               console.log(
-                'pathfinding for',
+                "pathfinding for",
                 this.id,
-                'took',
+                "took",
                 (performance.now() - startTime).toFixed(2),
-                'ms'
+                "ms"
               );
           }
         }
       });
     } catch (err) {
-      console.error('pathfinding error', err, this, {start, end});
+      console.error("pathfinding error", err, this, { start, end });
     }
 
     game.grid.easystar.calculate();
@@ -825,7 +828,7 @@ class TargetSeekingState extends CharacterState {
 
   updateMove(character: FestivalGoer, game: Game, move: Vec2d) {
     const path = character.path;
-    const {pathfindingTargetPos} = character;
+    const { pathfindingTargetPos } = character;
     if (pathfindingTargetPos) {
       if (!(path || character.isPathfinding)) {
         character.findPath(game, pathfindingTargetPos);
@@ -838,7 +841,7 @@ class TargetSeekingState extends CharacterState {
         if (!path.nextPointIsDestination()) {
           const nextPoint = path.getNextPoint();
           if (!nextPoint) {
-            throw new Error('expected next point');
+            throw new Error("expected next point");
           }
           move.add(character.getCenter().directionTo(nextPoint));
         } else {
@@ -852,18 +855,18 @@ class TargetSeekingState extends CharacterState {
     return `${this.constructor.name} { targetPos: ${
       this.character.pathfindingTargetPos
         ? this.character.pathfindingTargetPos.toString()
-        : '[none]'
+        : "[none]"
     } }`;
   }
 }
 
 class AIFestivalGoer extends FestivalGoer {
   static DIALOG = [
-    'Where can I charge my drone?',
+    "Where can I charge my drone?",
     "We'll remember this for the rest of our lives",
     "I'm shooting video in both horizontal & vertical formats",
     "They're not EarPods, they're AirPods",
-    'I quit my job to come to this',
+    "I quit my job to come to this"
   ];
 
   static DIALOG_VISIBLE_TIME = 3000;
@@ -935,7 +938,7 @@ class AIFestivalGoer extends FestivalGoer {
   updateDialog() {
     if (this.activeDialog) {
       // clear expired dialog
-      const {startTime} = this.activeDialog;
+      const { startTime } = this.activeDialog;
       if (Date.now() > startTime + AIFestivalGoer.DIALOG_VISIBLE_TIME) {
         this.activeDialog = null;
       }
@@ -949,7 +952,7 @@ class AIFestivalGoer extends FestivalGoer {
             AIFestivalGoer.DIALOG[
               Math.floor(Math.random() * AIFestivalGoer.DIALOG.length)
             ],
-          startTime: Date.now(),
+          startTime: Date.now()
         };
       }
     }
@@ -1006,7 +1009,7 @@ class AIFestivalGoer extends FestivalGoer {
 
 class TimedAttackState extends CharacterState {
   duration = 1000;
-  sound = '';
+  sound = "";
   startTime = Date.now();
   target: Tent;
 
@@ -1015,7 +1018,7 @@ class TimedAttackState extends CharacterState {
     this.target = target;
   }
 
-  update(): ?CharacterState {
+  update(game: Game): ?CharacterState {
     if (Date.now() > this.startTime + this.duration) {
       return new IdleState();
     }
@@ -1041,12 +1044,12 @@ class TentPissingState extends TimedAttackState {
 }
 
 class PissArea extends GameObject {
-  bboxStart = new Vec2d({x: -8, y: -8});
-  bboxEnd = new Vec2d({x: 8, y: 8});
+  bboxStart = new Vec2d({ x: -8, y: -8 });
+  bboxEnd = new Vec2d({ x: 8, y: 8 });
 }
 
 class FreePissingState extends CharacterState {
-  static PISS_OFFSET = new Vec2d({x: 0, y: -4});
+  static PISS_OFFSET = new Vec2d({ x: 0, y: -4 });
   static MAX_PISS_DISTANCE = 50;
   static PISS_TIME = 500;
   sound = sounds.whitenoise;
@@ -1104,7 +1107,7 @@ class FreePissingState extends CharacterState {
 class SmashingState extends TimedAttackState {
   duration = 300;
   sound = sounds.smash;
-  animation = new Smoke(this.target.pos.clone().add({x: 4, y: 0}));
+  animation = new Smoke(this.target.pos.clone().add({ x: 4, y: 0 }));
 
   enter(game: Game) {
     super.enter(game);
@@ -1117,14 +1120,97 @@ class SmashingState extends TimedAttackState {
   }
 }
 
+class Throttle {
+  lastStart = 0;
+  cooldownTime: number;
+  action: ?() => void;
+
+  constructor(cooldownTime, action) {
+    this.cooldownTime = cooldownTime;
+    this.action = action;
+  }
+
+  update(trigger: boolean) {
+    if (trigger) {
+      if (Date.now() > this.lastStart + this.cooldownTime) {
+        this.lastStart = Date.now();
+
+        this.action && this.action();
+      }
+    }
+  }
+}
+
+class BigPissState extends CharacterState {
+  duration = 2000;
+  sound = sounds.piss;
+  source = new Vec2d();
+  destination = new Vec2d();
+  static FRAMES = [assets.bigpiss1, assets.bigpiss2, assets.bigpiss3];
+  static FRAMES_PER_ANIM_FRAME = 3;
+  static shootingParticleCooldown = 100;
+  shootingParticleSystem = new ParticleSystem();
+  frothParticleSystem = new ParticleSystem();
+
+  _createShootingParticle = () => {
+    const jitterStart = 20;
+    const jitterEnd = 100;
+    // particle
+    const sprite = assets.bubble;
+    const duration = 2000;
+    const startPos = this.source
+      .clone()
+      .add(this.source.directionTo(this.destination).multiplyScalar(20))
+      .add({
+        x: Math.random() * jitterStart - jitterStart / 2,
+        y: Math.random() * jitterStart - jitterStart / 2
+      });
+    const endPos = this.destination.clone().add({
+      x: Math.random() * jitterEnd - jitterEnd / 2,
+      y: Math.random() * jitterEnd - jitterEnd / 2
+    });
+    const ease = linear;
+    this.shootingParticleSystem.particles.push(
+      new Particle(sprite, duration, startPos, endPos, ease)
+    );
+  };
+  shootParticleThrottled = new Throttle(
+    this.constructor.shootingParticleCooldown,
+    this._createShootingParticle
+  );
+
+  update(game: Game): ?CharacterState {
+    const nextState = super.update(game);
+    if (nextState) return nextState;
+
+    this.source.copyFrom(
+      new Vec2d({ x: 0, y: -4 }).add(game.player.getCenter())
+    );
+    this.destination.copyFrom(
+      this.source
+        .directionTo(game.cursorPos)
+        .multiplyScalar(1000)
+        .add(this.source)
+    );
+
+    this.shootParticleThrottled.update(true);
+    this.shootingParticleSystem.update();
+  }
+
+  enter(game: Game) {}
+  exit(game: Game) {
+    // game.checkForTentGroupsAdjacent(this.target);
+  }
+}
+
 class Player extends FestivalGoer {
-  static START_POS = new Vec2d({x: 308, y: 791});
+  static START_POS = new Vec2d({ x: 308, y: 791 });
   piss = 10;
   energy = 3;
   score = 0;
   pos = Player.START_POS.clone();
-  bboxStart = new Vec2d({x: 13, y: 18});
-  bboxEnd = new Vec2d({x: 17, y: 23});
+  bboxStart = new Vec2d({ x: 13, y: 18 });
+  bboxEnd = new Vec2d({ x: 17, y: 23 });
   stillSprite = assets.guystill;
   walkAnim = [assets.guywalkcycle1, assets.guywalkcycle2, assets.guywalkcycle3];
   static MOVEMENT_SPEED = 2;
@@ -1158,8 +1244,12 @@ class Player extends FestivalGoer {
 
     let move = new Vec2d();
 
+    // if (this.state instanceof IdleState) {
+    //   this.drinkTequila(game);
+    // }
+
     if (this.state instanceof TargetSeekingState) {
-      const {pathfindingTargetPos} = this;
+      const { pathfindingTargetPos } = this;
       if (pathfindingTargetPos) {
         if (this.getCenter().distanceTo(pathfindingTargetPos) < 1) {
           // at destination
@@ -1278,7 +1368,9 @@ class Player extends FestivalGoer {
     }
   }
 
-  drinkTequila() {}
+  drinkTequila(game: Game) {
+    this.transitionTo(new BigPissState(), game);
+  }
 
   doPissOnTent(tent: Tent, game: Game) {
     if (this.piss && tent.canPissOn()) {
@@ -1448,7 +1540,7 @@ class Grid {
   static GRID_OFFSET = GRID_START.clone().add(
     new Vec2d({
       x: 0,
-      y: 0,
+      y: 0
     })
   );
 
@@ -1466,7 +1558,7 @@ class Grid {
     if (Number.isNaN(x) || Number.isNaN(y)) {
       throw new Error(`invalid coordinates ${x},${y}`);
     }
-    return {x, y};
+    return { x, y };
   }
   toGridCoordsUnclamped(pos: Vec2d) {
     const x = Math.floor((pos.x - Grid.GRID_OFFSET.x) / GRID_UNIT_WIDTH);
@@ -1474,15 +1566,15 @@ class Grid {
     if (Number.isNaN(x) || Number.isNaN(y)) {
       throw new Error(`invalid coordinates ${x},${y}`);
     }
-    return {x, y};
+    return { x, y };
   }
-  tileCenterFromGridCoords(point: {x: number, y: number}) {
+  tileCenterFromGridCoords(point: { x: number, y: number }) {
     const pos = new Vec2d();
     pos.x = Grid.GRID_OFFSET.x + (point.x + 0.5) * GRID_UNIT_WIDTH;
     pos.y = Grid.GRID_OFFSET.y + (point.y + 0.5) * GRID_UNIT_HEIGHT;
     return pos;
   }
-  tileFloorFromGridCoords(point: {x: number, y: number}) {
+  tileFloorFromGridCoords(point: { x: number, y: number }) {
     const pos = new Vec2d();
     pos.x = Grid.GRID_OFFSET.x + point.x * GRID_UNIT_WIDTH;
     pos.y = Grid.GRID_OFFSET.y + point.y * GRID_UNIT_HEIGHT;
@@ -1506,20 +1598,20 @@ class Grid {
         pathCol <= objGridEndPos.x;
         pathCol++
       ) {
-        this.setGridTile({x: pathCol, y: pathRow}, AI_UNWALKABLE);
+        this.setGridTile({ x: pathCol, y: pathRow }, AI_UNWALKABLE);
       }
     }
   }
 
-  toggleGridTile(pathPoint: {x: number, y: number}) {
+  toggleGridTile(pathPoint: { x: number, y: number }) {
     this._setGridTile(pathPoint);
   }
 
-  setGridTile(pathPoint: {x: number, y: number}, setTo: Walkability) {
+  setGridTile(pathPoint: { x: number, y: number }, setTo: Walkability) {
     this._setGridTile(pathPoint, setTo);
   }
 
-  _isValidGridTile(pathPoint: {x: number, y: number}) {
+  _isValidGridTile(pathPoint: { x: number, y: number }) {
     const grid = this.tileGrid;
 
     if (!grid) return false;
@@ -1532,7 +1624,7 @@ class Grid {
     );
   }
 
-  getGridTile(pathPoint: {x: number, y: number}): ?Walkability {
+  getGridTile(pathPoint: { x: number, y: number }): ?Walkability {
     const grid = this.tileGrid;
 
     if (!grid) return null;
@@ -1543,7 +1635,7 @@ class Grid {
     return grid[pathPoint.y][pathPoint.x];
   }
 
-  _setGridTile(pathPoint: {x: number, y: number}, setTo?: ?Walkability) {
+  _setGridTile(pathPoint: { x: number, y: number }, setTo?: ?Walkability) {
     const grid = this.tileGrid;
 
     if (!grid) return;
@@ -1561,9 +1653,9 @@ class Grid {
   }
 }
 
-type TentGroup = 'red' | 'green' | 'blue';
+type TentGroup = "red" | "green" | "blue";
 
-type Screen = 'title' | 'play';
+type Screen = "title" | "play";
 
 class TitleScreen {
   busAnim = new BusAnimation();
@@ -1586,7 +1678,7 @@ class TitleScreen {
   }
 
   gotoPlayScreen(game: Game) {
-    game.screen = 'play';
+    game.screen = "play";
     game.startGame();
     this.release(game);
   }
@@ -1609,17 +1701,17 @@ class Game {
     Bus: Bus,
     CheeseSandwich: CheeseSandwich,
     Water: Water,
-    Tequila: Tequila,
+    Tequila: Tequila
   };
   frame = 0;
   player = new Player();
-  screen: Screen = 'title';
+  screen: Screen = "title";
   keys: KeyStates = {
     up: false,
     down: false,
     left: false,
     right: false,
-    attack: false,
+    attack: false
   };
   cursorPos = new Vec2d();
   inEditorMode = false;
@@ -1726,7 +1818,7 @@ class Game {
   }
 
   isTentCaptured(tent: Tent) {
-    return this.tentGroups.get(tent.id) === 'blue';
+    return this.tentGroups.get(tent.id) === "blue";
   }
 
   _spawnPerson() {
@@ -1735,7 +1827,7 @@ class Game {
       .clone()
       .add({
         x: 20,
-        y: -6,
+        y: -6
       });
 
     this.addWorldObject(new AIFestivalGoer(pos));
@@ -1764,13 +1856,13 @@ class Game {
 
   update() {
     switch (this.screen) {
-      case 'title': {
+      case "title": {
         if (this.titleScreen) {
           this.titleScreen.update(this);
         }
         break;
       }
-      case 'play': {
+      case "play": {
         for (let i = 0; i < this.worldObjects.length; i++) {
           this.worldObjects[i].update(this);
         }
@@ -1834,7 +1926,7 @@ class Game {
     }
 
     if (object instanceof Player && otherObject instanceof Powerup) {
-      otherObject.pickedUp(object);
+      otherObject.pickedUp(object, this);
     }
   }
 
@@ -1847,18 +1939,18 @@ class Game {
   }
 
   _findAndColorTentGroup(start: Tent) {
-    const {visited, containsOccupant} = this._checkForTentGroup(start);
+    const { visited, containsOccupant } = this._checkForTentGroup(start);
 
     visited.forEach(tent => {
       if (tent.isRuinedByPlayer()) {
-        this.tentGroups.set(tent.id, 'green');
+        this.tentGroups.set(tent.id, "green");
       } else {
         if (visited.size > MAX_CAPTURABLE_TENT_GROUP) {
         } else {
           if (containsOccupant) {
-            this.tentGroups.set(tent.id, 'red');
+            this.tentGroups.set(tent.id, "red");
           } else {
-            this.tentGroups.set(tent.id, 'blue');
+            this.tentGroups.set(tent.id, "blue");
             if (!tent.captured) {
               this.player.score += 500;
             }
@@ -1885,7 +1977,7 @@ class Game {
 
       const adjacencies = this.tentAdjacencies.get(tent.id);
       if (!adjacencies) {
-        return console.error('missing adjacencies from', tent);
+        return console.error("missing adjacencies from", tent);
       }
 
       for (let i = 0; i < adjacencies.length; i++) {
@@ -1896,14 +1988,14 @@ class Game {
             visit(adjacentTent);
           }
         } else {
-          console.error('invalid adjacent tent', adjacencies[i], adjacentTent);
+          console.error("invalid adjacent tent", adjacencies[i], adjacentTent);
         }
       }
     };
 
     visit(start);
 
-    return {visited, containsOccupant};
+    return { visited, containsOccupant };
   }
 }
 
@@ -1912,7 +2004,7 @@ function renderBBox(
   view: View,
   obj: GameObject
 ) {
-  ctx.strokeStyle = 'red';
+  ctx.strokeStyle = "red";
 
   const x = Math.floor(view.toScreenX(obj.pos.x + obj.bboxStart.x));
   const y = Math.floor(view.toScreenY(obj.pos.y + obj.bboxStart.y));
@@ -1944,7 +2036,7 @@ function renderEditorGrid(
 ) {
   const showGrid =
     DEBUG_PATHFINDING_BBOXES ||
-    (editorModeState && editorModeState.mode === 'grid');
+    (editorModeState && editorModeState.mode === "grid");
   if (DEBUG_PATHFINDING_NODES || showGrid) {
     if (!game.grid.tileGrid) return;
     const grid = game.grid.tileGrid;
@@ -1953,15 +2045,15 @@ function renderEditorGrid(
     const height = GRID_UNIT_HEIGHT;
     for (let row = 0; row < grid.length; row++) {
       for (let col = 0; col < grid[row].length; col++) {
-        const pos = game.grid.tileCenterFromGridCoords({x: col, y: row});
-        const {x, y} = pos;
+        const pos = game.grid.tileCenterFromGridCoords({ x: col, y: row });
+        const { x, y } = pos;
 
         const color =
           grid[row][col] === WALKABLE
-            ? 'green'
+            ? "green"
             : grid[row][col] === AI_UNWALKABLE
-            ? 'red'
-            : 'yellow';
+            ? "red"
+            : "yellow";
         if (DEBUG_PATHFINDING_NODES) {
           renderPoint(ctx, view, pos, color);
         }
@@ -2016,8 +2108,8 @@ function renderFestivalGoerImage(
     }
 
     if (person.activeDialog) {
-      ctx.font = '10px monospace';
-      ctx.fillStyle = 'black';
+      ctx.font = "10px monospace";
+      ctx.fillStyle = "black";
       ctx.fillText(
         person.activeDialog.text,
         view.toScreenX(person.pos.x),
@@ -2026,11 +2118,11 @@ function renderFestivalGoerImage(
     }
   }
 
-  const {target} = person;
+  const { target } = person;
   if (target) {
     const obj = person;
-    const {path} = obj;
-    ctx.strokeStyle = 'grey';
+    const { path } = obj;
+    ctx.strokeStyle = "grey";
     ctx.setLineDash([4, 8]);
     if (path) {
       let lastPoint = obj.getCenter();
@@ -2067,9 +2159,9 @@ function renderFestivalGoerImage(
   }
 
   if (DEBUG_AI_TARGETS && target) {
-    ctx.font = '10px monospace';
-    ctx.fillStyle = 'black';
-    ctx.strokeStyle = 'white';
+    ctx.font = "10px monospace";
+    ctx.fillStyle = "black";
+    ctx.strokeStyle = "white";
     ctx.strokeText(
       `t=${target.id}`,
       view.toScreenX(person.pos.x + 20),
@@ -2082,9 +2174,9 @@ function renderFestivalGoerImage(
     );
   }
   if (DEBUG_AI_STATE) {
-    ctx.font = '10px monospace';
-    ctx.fillStyle = 'black';
-    ctx.strokeStyle = 'white';
+    ctx.font = "10px monospace";
+    ctx.fillStyle = "black";
+    ctx.strokeStyle = "white";
     const prevLineWidth = ctx.lineWidth;
     ctx.lineWidth = 3;
 
@@ -2101,8 +2193,8 @@ function renderFestivalGoerImage(
     ctx.lineWidth = prevLineWidth;
   }
   if (DEBUG_OBJECTS) {
-    ctx.font = '10px monospace';
-    ctx.fillStyle = 'black';
+    ctx.font = "10px monospace";
+    ctx.fillStyle = "black";
     ctx.fillText(
       person.constructor.name + String(person.id),
       view.toScreenX(person.pos.x),
@@ -2130,7 +2222,7 @@ function renderPissStream(
   from: Vec2d,
   to: Vec2d
 ) {
-  ctx.strokeStyle = 'yellow';
+  ctx.strokeStyle = "yellow";
   ctx.beginPath();
   ctx.moveTo(view.toScreenX(from.x), view.toScreenY(from.y));
   // ctx.lineTo(view.toScreenX(to.x), view.toScreenY(to.y));
@@ -2145,7 +2237,7 @@ function renderPissStream(
   ctx.stroke();
 
   // splashes
-  ctx.strokeStyle = 'white';
+  ctx.strokeStyle = "white";
 
   for (let i = 0; i < 4; i++) {
     ctx.beginPath();
@@ -2172,13 +2264,38 @@ function renderLine(
   ctx.stroke();
 }
 
+function renderBigPiss(
+  ctx: CanvasRenderingContext2D,
+  view: View,
+  state: BigPissState,
+  from: Vec2d,
+  to: Vec2d,
+  frame: number
+) {
+  const direction = from.directionTo(to);
+
+  renderImageCenteredBottomRotated(
+    ctx,
+    view,
+    from,
+    direction.angle() + degToRad(90),
+    frameCycle(BigPissState.FRAMES, BigPissState.FRAMES_PER_ANIM_FRAME, frame)
+  );
+
+  // render particles
+  for (var i = 0; i < state.shootingParticleSystem.particles.length; i++) {
+    const particle = state.shootingParticleSystem.particles[i];
+    renderImageCentered(ctx, view, particle.pos, particle.sprite);
+  }
+}
+
 function renderDebugLine(
   ctx: CanvasRenderingContext2D,
   view: View,
   from: Vec2d,
   to: Vec2d
 ) {
-  ctx.strokeStyle = 'blue';
+  ctx.strokeStyle = "blue";
   ctx.beginPath();
   ctx.moveTo(view.toScreenX(from.x), view.toScreenY(from.y));
   // ctx.lineTo(view.toScreenX(to.x), view.toScreenY(to.y));
@@ -2193,7 +2310,7 @@ function renderDebugLine(
   ctx.stroke();
 
   // tip
-  ctx.strokeStyle = 'purple';
+  ctx.strokeStyle = "purple";
 
   ctx.beginPath();
 
@@ -2212,7 +2329,7 @@ function renderDebugCircle(
   view: View,
   pos: Vec2d,
   radius: number,
-  color: string = 'red'
+  color: string = "red"
 ) {
   ctx.strokeStyle = color;
   ctx.beginPath();
@@ -2246,8 +2363,8 @@ function renderObjectImage(
   }
 
   if (DEBUG_OBJECTS) {
-    ctx.font = '10px monospace';
-    ctx.fillStyle = 'black';
+    ctx.font = "10px monospace";
+    ctx.fillStyle = "black";
     ctx.fillText(
       obj.constructor.name + String(obj.id),
       view.toScreenX(obj.pos.x),
@@ -2296,6 +2413,33 @@ function renderImageCentered(
   );
 }
 
+function renderImageCenteredBottomRotated(
+  ctx: CanvasRenderingContext2D,
+  view: View,
+  pos: Vec2d,
+  angle: number,
+  imageUrl: AssetURI
+) {
+  const image = getImage(imageUrl);
+  if (!image) return;
+  ctx.save();
+
+  ctx.translate(
+    Math.floor(view.toScreenX(pos.x)),
+    Math.floor(view.toScreenY(pos.y))
+  );
+  // ctx.translate(image.width / 2, 0);
+  ctx.rotate(angle);
+  ctx.drawImage(
+    image,
+    Math.floor(-image.width / 2),
+    Math.floor(-image.height),
+    Math.floor(image.width),
+    Math.floor(image.height)
+  );
+  ctx.restore();
+}
+
 function renderLabel(
   ctx: CanvasRenderingContext2D,
   view: View,
@@ -2304,7 +2448,7 @@ function renderLabel(
   color: string,
   yOffset: number
 ) {
-  ctx.font = '10px monospace';
+  ctx.font = "10px monospace";
   ctx.fillStyle = color;
 
   const label = text;
@@ -2332,14 +2476,14 @@ function renderTent(
       renderImage(
         ctx,
         view,
-        tent.pos.clone().add({x: -8, y: 0}),
+        tent.pos.clone().add({ x: -8, y: 0 }),
         assets.occupied
       );
     } else if (tent.pissiness >= Tent.MAX_PISSINESS) {
       renderImage(
         ctx,
         view,
-        tent.pos.clone().add({x: -8, y: 0}),
+        tent.pos.clone().add({ x: -8, y: 0 }),
         assets.pissed
       );
     } else if (tent.pissiness >= Tent.UNUSUABLE_PISSINESS) {
@@ -2347,13 +2491,18 @@ function renderTent(
         ctx,
         view,
         tent,
-        String(Math.floor((tent.pissiness / Tent.MAX_PISSINESS) * 100)) + '%',
-        'blue',
+        String(Math.floor((tent.pissiness / Tent.MAX_PISSINESS) * 100)) + "%",
+        "blue",
         5
       );
     } else if (tent.captured) {
       // renderLabel(ctx, view, tent, 'owned', 'blue', -5);
-      renderImage(ctx, view, tent.pos.clone().add({x: -8, y: 0}), assets.owned);
+      renderImage(
+        ctx,
+        view,
+        tent.pos.clone().add({ x: -8, y: 0 }),
+        assets.owned
+      );
     }
     if (tent.pissiness < Tent.MAX_PISSINESS) {
       // render particles
@@ -2383,8 +2532,8 @@ function renderTarget(
       : MOUSE_CONTROL
       ? null
       : `piss on`;
-  ctx.font = '10px monospace';
-  ctx.fillStyle = 'black';
+  ctx.font = "10px monospace";
+  ctx.fillStyle = "black";
   if (label) {
     ctx.drawImage(
       image,
@@ -2411,10 +2560,10 @@ const getScrollingSandImageData = (() => {
     if (!(sandImage && workingImageData)) {
       const image = getImage(assets.titlesand);
       if (image) {
-        const canvas = document.createElement('canvas');
+        const canvas = document.createElement("canvas");
         canvas.width = image.width * 2;
         canvas.height = image.height;
-        var ctx = canvas.getContext('2d');
+        var ctx = canvas.getContext("2d");
         ctx.drawImage(image, 0, 0);
         ctx.drawImage(image, image.width, 0);
 
@@ -2423,11 +2572,11 @@ const getScrollingSandImageData = (() => {
       }
     }
 
-    return {sandImage, workingImageData};
+    return { sandImage, workingImageData };
   };
 })();
 
-type Keyframe = {tick: number, pos: Vec2dInit};
+type Keyframe = { tick: number, pos: Vec2dInit };
 class Animation {
   keyframes: Array<Keyframe> = [];
   pos = new Vec2d();
@@ -2472,9 +2621,9 @@ class Animation {
 
 class BusAnimation extends Animation {
   keyframes = [
-    {tick: 71, pos: {x: 0, y: 0}},
-    {tick: 71 + 2, pos: {x: 0, y: -2}},
-    {tick: 71 + 4, pos: {x: 0, y: 0}},
+    { tick: 71, pos: { x: 0, y: 0 } },
+    { tick: 71 + 2, pos: { x: 0, y: -2 } },
+    { tick: 71 + 4, pos: { x: 0, y: 0 } }
   ];
 }
 
@@ -2507,13 +2656,13 @@ function renderTitleScreen(
   ctx: CanvasRenderingContext2D,
   game: Game
 ) {
-  const {titleScreen} = game;
+  const { titleScreen } = game;
   if (!titleScreen) return;
 
-  ctx.fillStyle = '#0039c6';
+  ctx.fillStyle = "#0039c6";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const {sandImage, workingImageData} = getScrollingSandImageData();
+  const { sandImage, workingImageData } = getScrollingSandImageData();
   if (!(sandImage && workingImageData)) return;
 
   // scrolling sand
@@ -2641,12 +2790,12 @@ function renderTitleScreen(
 }
 
 function renderFrame(canvas, ctx, game, editorModeState) {
-  if (game.screen === 'title') {
+  if (game.screen === "title") {
     return renderTitleScreen(canvas, ctx, game);
   }
 
-  PERF_FRAMETIME && console.time('render frame');
-  ctx.globalCompositeOperation = 'source-over';
+  PERF_FRAMETIME && console.time("render frame");
+  ctx.globalCompositeOperation = "source-over";
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   renderBG(ctx, game.view);
 
@@ -2671,18 +2820,18 @@ function renderFrame(canvas, ctx, game, editorModeState) {
       renderObjectImage(ctx, game.view, obj);
     }
   });
-  const {target} = game.player;
+  const { target } = game.player;
 
   if (DARK) {
     const tents = typeFilter(game.worldObjects, Tent);
     const tentsUsable = tents.filter(tent => tent.isUsable()).length;
     // render tint
-    ctx.globalCompositeOperation = 'multiply';
+    ctx.globalCompositeOperation = "multiply";
     ctx.fillStyle = `rgba(170,194,235,${inCube(
       1 - tentsUsable / tents.length
     )})`;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalCompositeOperation = "source-over";
   }
 
   // render stuff above tint
@@ -2699,24 +2848,24 @@ function renderFrame(canvas, ctx, game, editorModeState) {
         obj.stuck
         // || (obj instanceof Player && obj.pathfindingTargetPos)
       ) {
-        const {path} = obj;
+        const { path } = obj;
         if (path) {
           let lastPoint = obj.getCenter();
           for (let i = 0; i < path.points.length; i++) {
             const dest = path.points[i];
 
-            renderPoint(ctx, game.view, dest, 'blue');
+            renderPoint(ctx, game.view, dest, "blue");
 
             renderDebugLine(ctx, game.view, lastPoint, dest);
             lastPoint = path.points[i];
           }
         }
       } else if (DEBUG_PATH_FOLLOWING) {
-        const {path} = obj;
+        const { path } = obj;
         if (path) {
           const dest = path.getNextPoint();
           if (dest) {
-            renderPoint(ctx, game.view, dest, 'blue');
+            renderPoint(ctx, game.view, dest, "blue");
 
             renderDebugLine(ctx, game.view, obj.getCenter(), dest);
           }
@@ -2730,7 +2879,7 @@ function renderFrame(canvas, ctx, game, editorModeState) {
         }
       }
 
-      if (game.tentGroups.get(obj.id) === 'blue') {
+      if (game.tentGroups.get(obj.id) === "blue") {
         const adjacencies = game.tentAdjacencies.get(obj.id);
         if (adjacencies) {
           let prev =
@@ -2745,7 +2894,7 @@ function renderFrame(canvas, ctx, game, editorModeState) {
                 game.view,
                 prev.getCenter(),
                 adjacent.getCenter(),
-                'blue'
+                "blue"
               );
             }
             prev = adjacent;
@@ -2796,9 +2945,17 @@ function renderFrame(canvas, ctx, game, editorModeState) {
     renderPissStream(
       ctx,
       game.view,
-      new Vec2d({x: 0, y: -4}).add(game.player.getCenter()),
+      new Vec2d({ x: 0, y: -4 }).add(game.player.getCenter()),
       playerState.target.getCenter()
     );
+  } else if (playerState instanceof BigPissState) {
+    const from = new Vec2d({ x: 0, y: -4 }).add(game.player.getCenter());
+    // const to = from
+    //   .directionTo(game.cursorPos)
+    //   .multiplyScalar(3000)
+    //   .add(from);
+    const to = game.cursorPos.clone();
+    renderBigPiss(ctx, game.view, playerState, from, to, game.frame);
   }
   if (target) {
     renderTarget(ctx, game.view, target, game);
@@ -2810,32 +2967,32 @@ function renderFrame(canvas, ctx, game, editorModeState) {
   //   }
   // }
 
-  PERF_FRAMETIME && console.timeEnd('render frame');
+  PERF_FRAMETIME && console.timeEnd("render frame");
 }
 
-const Hud = (props: {game: Game}) => {
-  const {game} = props;
-  if (game.screen === 'title') return null;
-  const {target} = game.player;
+const Hud = (props: { game: Game }) => {
+  const { game } = props;
+  if (game.screen === "title") return null;
+  const { target } = game.player;
   const tents = typeFilter(game.worldObjects, Tent);
   const tentsUsable = tents.filter(tent => tent.isUsable()).length;
   const tentsOwned = tents.filter(
-    tent => game.tentGroups.get(tent.id) === 'blue'
+    tent => game.tentGroups.get(tent.id) === "blue"
   ).length;
   return (
-    <div style={{position: 'absolute', top: 0, left: 0}}>
+    <div style={{ position: "absolute", top: 0, left: 0 }}>
       <div>
         <div className="statbarlabel">Piss: </div>
         <div
           className="statbar"
-          style={{background: '#ff4', width: game.player.piss * 10}}
+          style={{ background: "#ff4", width: game.player.piss * 10 }}
         />
       </div>
       <div>
         <div className="statbarlabel">Energy: </div>
         <div
           className="statbar"
-          style={{background: '#f44', width: game.player.energy * 10}}
+          style={{ background: "#f44", width: game.player.energy * 10 }}
         />
       </div>
       <div>
@@ -2861,15 +3018,15 @@ const Hud = (props: {game: Game}) => {
                 gridPos: game.grid.toGridCoords(game.player.pos),
                 walkability: game.grid.getGridTile(
                   game.grid.toGridCoords(game.player.getCenter())
-                ),
+                )
               },
               target: target && {
                 id: target.id,
                 distanceTo: game.player
                   .getCenter()
                   .distanceTo(target.getCenter())
-                  .toFixed(2),
-              },
+                  .toFixed(2)
+              }
             },
             null,
             2
@@ -2879,7 +3036,7 @@ const Hud = (props: {game: Game}) => {
         {DEBUG_WORLD_STATE &&
           JSON.stringify(
             {
-              worldObjects: game.worldObjects.length,
+              worldObjects: game.worldObjects.length
             },
             null,
             2
@@ -2893,7 +3050,7 @@ class RangeQuery extends GameObject {
   constructor(init: Vec2dInit, area: Vec2dInit) {
     super(init);
 
-    this.bboxStart = new Vec2d({x: 0, y: 0});
+    this.bboxStart = new Vec2d({ x: 0, y: 0 });
     this.bboxEnd = new Vec2d(area).multiplyScalar(2);
   }
 
@@ -2908,41 +3065,41 @@ class RangeQuery extends GameObject {
 
 type EditorObjectsModeCommand = {
   description: string,
-  undo: () => void,
+  undo: () => void
 };
 
 type EditorModeState =
-  | {|mode: 'grid', paint: Walkability, brushSize: number|}
+  | {| mode: "grid", paint: Walkability, brushSize: number |}
   | {|
-      mode: 'objects',
-      submode: 'add' | 'delete' | 'toggleEnabled',
+      mode: "objects",
+      submode: "add" | "delete" | "toggleEnabled",
       type: Class<GameObject>,
-      history: Array<EditorObjectsModeCommand>,
+      history: Array<EditorObjectsModeCommand>
     |}
-  | {|mode: 'play'|};
+  | {| mode: "play" |};
 
 class Editor extends React.Component<
-  {game: Game},
-  {modeState: EditorModeState}
+  { game: Game },
+  { modeState: EditorModeState }
 > {
   static cycle<T>(types: Array<T>, prev: T): T {
     return types[(types.indexOf(prev) + 1) % types.length];
   }
   static RIGHT_ALIGN = {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'flex-end',
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end"
   };
-  state = {modeState: {mode: 'play'}};
+  state = { modeState: { mode: "play" } };
 
   _spawnObjectDebounced: (pos: Vec2dInit) => void = throttle(pos => {
     const game = this.props.game;
     const state = this.getModeState();
-    if (state.mode !== 'objects') return;
+    if (state.mode !== "objects") return;
 
     switch (state.submode) {
-      case 'add': {
-        const obj = game.spawnObjectOfType({type: state.type.name, pos});
+      case "add": {
+        const obj = game.spawnObjectOfType({ type: state.type.name, pos });
 
         // center on mouse click
         obj.pos.sub(
@@ -2958,13 +3115,13 @@ class Editor extends React.Component<
             description: `add ${obj.constructor.name} ${obj.id}`,
             undo: () => {
               game.removeWorldObject(obj);
-            },
-          }),
+            }
+          })
         });
         return;
       }
-      case 'delete': {
-        const searchArea = {x: 1, y: 1};
+      case "delete": {
+        const searchArea = { x: 1, y: 1 };
         const obj = new RangeQuery(pos, searchArea).first(game.worldObjects);
 
         if (obj) {
@@ -2976,15 +3133,15 @@ class Editor extends React.Component<
               description: `delete ${obj.constructor.name} ${obj.id}`,
               undo: () => {
                 game.addWorldObject(obj);
-              },
-            }),
+              }
+            })
           });
         }
 
         return;
       }
-      case 'toggleEnabled': {
-        const searchArea = {x: 1, y: 1};
+      case "toggleEnabled": {
+        const searchArea = { x: 1, y: 1 };
         const obj = new RangeQuery(pos, searchArea).first(game.worldObjects);
 
         if (obj) {
@@ -2994,13 +3151,13 @@ class Editor extends React.Component<
           this.updateModeState({
             ...state,
             history: state.history.concat({
-              description: `${obj.enabled ? 'enable' : 'disable'} ${
+              description: `${obj.enabled ? "enable" : "disable"} ${
                 obj.constructor.name
               } ${obj.id}`,
               undo: () => {
                 obj.enabled = prevEnabled;
-              },
-            }),
+              }
+            })
           });
         }
 
@@ -3015,7 +3172,7 @@ class Editor extends React.Component<
     const game = this.props.game;
     const state = this.getModeState();
     switch (state.mode) {
-      case 'grid': {
+      case "grid": {
         const pathPoint = game.grid.toGridCoords(pos);
         if (state.brushSize === 1) {
           game.grid.setGridTile(pathPoint, state.paint);
@@ -3032,13 +3189,13 @@ class Editor extends React.Component<
               y <= pathPoint.y + halfBrushSize;
               y++
             ) {
-              game.grid.setGridTile({x, y}, state.paint);
+              game.grid.setGridTile({ x, y }, state.paint);
             }
           }
         }
         break;
       }
-      case 'objects': {
+      case "objects": {
         this._spawnObjectDebounced(pos);
         break;
       }
@@ -3046,14 +3203,14 @@ class Editor extends React.Component<
         return;
     }
   }
-  _initMode(name: $PropertyType<EditorModeState, 'mode'>): EditorModeState {
+  _initMode(name: $PropertyType<EditorModeState, "mode">): EditorModeState {
     switch (name) {
-      case 'grid':
-        return {mode: 'grid', paint: UNWALKABLE, brushSize: 1};
-      case 'objects':
-        return {mode: 'objects', submode: 'add', type: Tent, history: []};
-      case 'play': {
-        return {mode: 'play'};
+      case "grid":
+        return { mode: "grid", paint: UNWALKABLE, brushSize: 1 };
+      case "objects":
+        return { mode: "objects", submode: "add", type: Tent, history: [] };
+      case "play": {
+        return { mode: "play" };
       }
       default:
         return (name: empty);
@@ -3063,59 +3220,59 @@ class Editor extends React.Component<
     return this.state.modeState;
   }
   updateModeState(nextState: EditorModeState) {
-    this.setState({modeState: nextState});
+    this.setState({ modeState: nextState });
   }
   _handleEditorModeChange = () => {
     const state = this.getModeState();
     const prevMode = state.mode;
-    const nextMode = Editor.cycle(['play', 'objects', 'grid'], prevMode);
+    const nextMode = Editor.cycle(["play", "objects", "grid"], prevMode);
     this.updateModeState(this._initMode(nextMode));
   };
   _handleObjectTypeChange = () => {
     const state = this.getModeState();
-    if (state.mode !== 'objects') return;
+    if (state.mode !== "objects") return;
     this.updateModeState({
       ...state,
       type: Editor.cycle(
         [Tent, CheeseSandwich, Water, Bus, Tequila],
         state.type
-      ),
+      )
     });
   };
   _handlePaintChange = () => {
     const state = this.getModeState();
-    if (state.mode !== 'grid') return;
+    if (state.mode !== "grid") return;
     this.updateModeState({
       ...state,
-      paint: Editor.cycle([WALKABLE, AI_UNWALKABLE, UNWALKABLE], state.paint),
+      paint: Editor.cycle([WALKABLE, AI_UNWALKABLE, UNWALKABLE], state.paint)
     });
   };
   _handleBrushSizeChange = () => {
     const state = this.getModeState();
-    if (state.mode !== 'grid') return;
+    if (state.mode !== "grid") return;
     this.updateModeState({
       ...state,
-      brushSize: Editor.cycle([1, 3, 5], state.brushSize),
+      brushSize: Editor.cycle([1, 3, 5], state.brushSize)
     });
   };
   _handleObjectSubmodeToggle = () => {
     const state = this.getModeState();
-    if (state.mode !== 'objects') return;
+    if (state.mode !== "objects") return;
     this.updateModeState({
       ...state,
-      submode: Editor.cycle(['add', 'delete', 'toggleEnabled'], state.submode),
+      submode: Editor.cycle(["add", "delete", "toggleEnabled"], state.submode)
     });
   };
   _handleObjectUndo = () => {
     const state = this.getModeState();
-    if (state.mode !== 'objects') return;
+    if (state.mode !== "objects") return;
     const lastItem = last(state.history);
 
     if (lastItem) {
       lastItem.undo();
       this.updateModeState({
         ...state,
-        history: state.history.filter(item => item !== lastItem),
+        history: state.history.filter(item => item !== lastItem)
       });
     }
   };
@@ -3125,16 +3282,16 @@ class Editor extends React.Component<
 
   _renderModeMenu(state: EditorModeState) {
     switch (state.mode) {
-      case 'grid': {
+      case "grid": {
         return (
           <div style={Editor.RIGHT_ALIGN}>
             <button onClick={this._handlePaintChange}>
-              walkability:{' '}
+              walkability:{" "}
               {state.paint === WALKABLE
-                ? 'WALKABLE'
+                ? "WALKABLE"
                 : state.paint === AI_UNWALKABLE
-                ? 'AI_UNWALKABLE'
-                : 'UNWALKABLE'}
+                ? "AI_UNWALKABLE"
+                : "UNWALKABLE"}
             </button>
             <button onClick={this._handleBrushSizeChange}>
               brushSize: {state.brushSize}
@@ -3142,15 +3299,15 @@ class Editor extends React.Component<
           </div>
         );
       }
-      case 'objects': {
+      case "objects": {
         return (
           <div style={Editor.RIGHT_ALIGN}>
             <div>
               <button onClick={this._handleObjectUndo}>
-                undo{' '}
+                undo{" "}
                 {last(state.history)
                   ? last(state.history).description
-                  : '[nothing to undo]'}
+                  : "[nothing to undo]"}
               </button>
             </div>
             <div>
@@ -3168,7 +3325,7 @@ class Editor extends React.Component<
               </div>
             </div>
 
-            {state.type.name === 'Tent' && (
+            {state.type.name === "Tent" && (
               <div>
                 <button onClick={this._handleInitAdjacency}>
                   recalc tent adjacencies
@@ -3188,11 +3345,11 @@ class Editor extends React.Component<
     return (
       <div
         style={{
-          position: 'absolute',
+          position: "absolute",
           top: 0,
           right: 0,
           width: 300,
-          ...Editor.RIGHT_ALIGN,
+          ...Editor.RIGHT_ALIGN
         }}
       >
         <button onClick={this._handleEditorModeChange}>{state.mode}</button>
@@ -3210,13 +3367,13 @@ class App extends Component<{}, void> {
   componentDidMount() {
     window.game = this.game;
     window.renderer = this;
-    document.addEventListener('keydown', (event: KeyboardEvent) =>
+    document.addEventListener("keydown", (event: KeyboardEvent) =>
       this._handleKey(event, true)
     );
-    document.addEventListener('keyup', (event: KeyboardEvent) =>
+    document.addEventListener("keyup", (event: KeyboardEvent) =>
       this._handleKey(event, false)
     );
-    window.addEventListener('resize', () => this.forceUpdate());
+    window.addEventListener("resize", () => this.forceUpdate());
 
     this._renderCanvas();
     this._enqueueFrame();
@@ -3230,27 +3387,27 @@ class App extends Component<{}, void> {
 
   _handleKey(event: KeyboardEvent, pressed: boolean) {
     switch (event.key) {
-      case 'w':
-      case 'ArrowUp': {
+      case "w":
+      case "ArrowUp": {
         this.game.keys.up = pressed;
         break;
       }
-      case 'a':
-      case 'ArrowLeft': {
+      case "a":
+      case "ArrowLeft": {
         this.game.keys.left = pressed;
         break;
       }
-      case 's':
-      case 'ArrowDown': {
+      case "s":
+      case "ArrowDown": {
         this.game.keys.down = pressed;
         break;
       }
-      case 'd':
-      case 'ArrowRight': {
+      case "d":
+      case "ArrowRight": {
         this.game.keys.right = pressed;
         break;
       }
-      case ' ': {
+      case " ": {
         this.game.keys.attack = pressed;
         break;
       }
@@ -3272,7 +3429,7 @@ class App extends Component<{}, void> {
   }
   _update() {
     this.game.inEditorMode =
-      this.editor && this.editor.getModeState().mode !== 'play';
+      this.editor && this.editor.getModeState().mode !== "play";
     this.game.update();
   }
 
@@ -3282,7 +3439,7 @@ class App extends Component<{}, void> {
   _renderCanvas() {
     const canvas = this._canvas;
     if (canvas instanceof HTMLCanvasElement) {
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext("2d");
       renderFrame(
         canvas,
         ctx,
@@ -3343,7 +3500,7 @@ class App extends Component<{}, void> {
           onMouseMove={this._handleMouseMove}
           width={window.innerWidth / SCALE}
           height={window.innerHeight / SCALE}
-          style={{transform: `scale(${SCALE})`, transformOrigin: 'top left'}}
+          style={{ transform: `scale(${SCALE})`, transformOrigin: "top left" }}
           className="sprite"
         />
 
