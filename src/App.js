@@ -534,7 +534,14 @@ class Powerup extends GameObject {
   sound = '';
   respawnTime = 10000;
   state: PowerupState = new AvailablePowerupState(this);
+  _initialStateEntered = false;
+
   update(game: Game) {
+    if (!this._initialStateEntered) {
+      this._initialStateEntered = true;
+      this.state.enter(game);
+    }
+
     this.pos.y += Math.sin(game.frame / 10 + (this.id % 10));
 
     const nextState = this.state.update(game);
@@ -670,6 +677,7 @@ class FestivalGoer extends GameObject {
   path: ?Path = null;
   stuck = false;
   activeDialog: ?{text: string} = null;
+  _firstStateEntered = false;
 
   static MOVEMENT_SPEED = 1;
   stillSprite = assets.personstill;
@@ -746,6 +754,13 @@ class FestivalGoer extends GameObject {
       return bestCandidates[0].gridPos;
     }
     return null;
+  }
+
+  update(game: Game) {
+    if (!this._firstStateEntered) {
+      this._firstStateEntered = true;
+      this.state.enter(game);
+    }
   }
 
   findPath(game: Game, targetPos: Vec2d) {
@@ -982,6 +997,7 @@ class AIFestivalGoer extends FestivalGoer {
   });
 
   update(game: Game) {
+    super.update(game);
     this.stuck = false;
     if (!this.target) {
       this.tryAcquireTarget(game);
