@@ -1,5 +1,7 @@
 # Fyre Festival Bed Piss Guy Simulator 2019
 
+an unfinished game about [this guy](https://nextshark.com/justin-liao-fyre-festival-netflix/)
+
 
 ### install 
 
@@ -7,8 +9,6 @@
 npm install
 npm start
 ```
-
-> These are the days we're gonna remember for the rest of our lives
 
 ### mechanics
 - people are attracted to tents which aren't ruined
@@ -19,10 +19,6 @@ npm start
 - other festivalgoers will be hoarding tents and resources at the same time,
 so you better hurry
 
-### stuff to build
-- collision detection for people vs tents, pickups etc
-- pathfinding for festivalgoers to get to tents, pickups etc
-- algo for deciding if a tent is isolated or not
 
 ### nice to have
 - people arrive on a bus
@@ -32,19 +28,9 @@ so you better hurry
 - swimming?
 
 ### dialogue
-- "Do you think there is somewhere I can charge my drone?"
 - "Where can I charge my drone?"
 - "I'm making sure to shoot in both horizontal & vertical video formats"
-- "They're air pods not ear pods"
 - "I quit my job to come to this"
-
-
-### todo
-- algo for deciding if a tent is isolated or not
-- tutorial/tour
-- bus
-- pickup respawn
-- sound
 
 
 
